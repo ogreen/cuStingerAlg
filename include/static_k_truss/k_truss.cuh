@@ -12,11 +12,23 @@ public:
 	int currK;
 	int maxK;
 
-	bool* isActive;
-	length_t* offsetArray;
-	length_t* trianglePerEdge;
+	int tsp;
+	int nbl;
+	int shifter;
+	int blocks;
+	int sps;
 
-	length_t numDeletedEdges;
+	int32_t* isActive;
+	int32_t* offsetArray;
+	int32_t* trianglePerEdge;
+	int32_t* trianglePerVertex;
+
+	vertexId_t* src;
+	vertexId_t* dst;
+	int  counter;
+	int  activeVertices;
+
+	// int numDeletedEdges;
 	length_t nv;
 	length_t ne; // undirected-edges
 
@@ -26,15 +38,17 @@ public:
 // Label propogation is based on the values from the previous iteration.
 class kTruss:public StaticAlgorithm{
 public:
-	void setInitParameters(length_t nv, length_t ne,length_t maxK);
-
-
+	void setInitParameters(length_t nv, length_t ne,length_t maxK, int tsp, int nbl, int shifter,int blocks, int  sps);
 	virtual void Init(cuStinger& custing);
+
 	virtual void Reset();
 	virtual void Run(cuStinger& custing);
 	virtual void Release();
 
+	void copyOffsetArrayHost(length_t* hostOffsetArray);
+	void copyOffsetArrayDevice(length_t* deviceOffsetArray);
 	void resetEdgeArray();
+	void resetVertexArray();
 
 
 	virtual void SyncHostWithDevice(){
@@ -46,17 +60,7 @@ public:
 
 	length_t getIterationCount();
 
-	// const kTrussData* getHostKatzData(){return hostKTrussData;}
-	// const kTrussData* getDeviceKatzData(){return deviceKTrussData;}
-
-	// virtual void copyKCToHost(double* hostArray){
-	// 	copyArrayDeviceToHost(hostKTrussData->KC,hostArray, hostKTrussData->nv, sizeof(double));
-	// }
-
-	// virtual void copynPathsToHost(ulong_t* hostArray){
-	// 	copyArrayDeviceToHost(hostKTrussData->nPathsData,hostArray, (hostKTrussData->nv)*hostKTrussData->maxIteration, sizeof(ulong_t));
-	// }
-
+	length_t getCurrK(){return hostKTrussData.currK;}
 
 protected:
 	kTrussData hostKTrussData, *deviceKTrussData;
@@ -69,15 +73,53 @@ private:
 class kTrussOperators{
 public:
 
-// // Used at the very beginning
-// static __device__ void init(cuStinger* custing,vertexId_t src, void* metadata){
-// 	katzData* kd = (katzData*)metadata;
-// 	kd->nPathsPrev[src]=1;
-// 	kd->nPathsCurr[src]=0;
-// 	kd->KC[src]=0.0;
-// 	kd->isActive[src]=true;
-// 	kd->indexArray[src]=src;
-// }
+static __device__ void init(cuStinger* custing,vertexId_t src, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
+	kt->isActive[src]=1;
+}
+
+// Used at the very beginning
+static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
+
+	length_t srcLen=custing->dVD->used[src];
+	if(kt->isActive[src]==0)
+		return;
+	if(srcLen==0){
+		kt->isActive[src]=0;
+		return;
+	}
+	vertexId_t* adj_src=custing->dVD->adj[src]->dst;
+	for(vertexId_t adj=0; adj<srcLen; adj+=1){
+		vertexId_t dst = adj_src[adj];
+		
+		// int* ptr = &kt->counter;
+		int pos = kt->offsetArray[src]+adj;
+
+		if (kt->trianglePerEdge[pos] < kt->currK){
+			int spot = atomicAdd(&(kt->counter), 1);
+			kt->src[spot]=src;
+			kt->dst[spot]=dst;
+		}
+		// else{
+		// 	printf("#### %d %d %d\n",src,dst,kt->trianglePerEdge[pos]);			
+		// }
+	}
+}
+
+static __device__ void countActive(cuStinger* custing,vertexId_t src, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
+
+	length_t srcLen=custing->dVD->used[src];
+	if(srcLen==0){
+		kt->isActive[src]=0;
+	}
+	else{
+		int* ptr = &kt->activeVertices;
+		atomicAdd(&(kt->activeVertices), 1);
+	}
+}
+
 
 // // Used every iteration
 // static __device__ void initNumPathsPerIteration(cuStinger* custing,vertexId_t src, void* metadata){
@@ -85,37 +127,10 @@ public:
 // 	kd->nPathsCurr[src]=0;
 // }
 
-// static __device__ void updatePathCount(cuStinger* custing,vertexId_t src, vertexId_t dst, void* metadata){
-// 	katzData* kd = (katzData*)metadata;
-// 	atomicAdd(kd->nPathsCurr+src, kd->nPathsPrev[dst]);
-// }
-
-// static __device__ void updateKatzAndBounds(cuStinger* custing,vertexId_t src, void* metadata){
-// 	katzData* kd = (katzData*)metadata;
-// 	kd->KC[src]=kd->KC[src] + kd->alphaI * (double)kd->nPathsCurr[src];
-// 	kd->lowerBound[src]=kd->KC[src] + kd->lowerBoundConst * (double)kd->nPathsCurr[src];
-// 	kd->upperBound[src]=kd->KC[src] + kd->upperBoundConst * (double)kd->nPathsCurr[src];   
-
-// 	if(kd->isActive[src]){
-// 		length_t pos = atomicAdd(&(kd -> nActive),1);
-// 		kd->vertexArray[pos] = src;
-// 		kd->lowerBoundSort[pos]=kd->lowerBound[src];
-// 	}
-// }
-
-
-// static __device__ void countActive(cuStinger* custing,vertexId_t src, void* metadata){
-// 	katzData* kd = (katzData*)metadata;
-// 	if (kd->upperBound[src] > kd->lowerBound[kd->vertexArray[kd->K-1]]) {
-// 		atomicAdd(&(kd -> nActive),1);
-// 	}
-// 	else{
-// 		kd->isActive[src] = false;
-// 	}
-// }
 
 };
 
 
 
 } // cuStingerAlgs namespace
+	

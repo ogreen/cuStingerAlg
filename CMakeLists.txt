@@ -7,6 +7,7 @@ INCLUDE(FindCUDA)
 
 INCLUDE_DIRECTORIES(/usr/local/cuda/include)
 INCLUDE_DIRECTORIES(include)
+INCLUDE_DIRECTORIES(src)
 # INCLUDE_DIRECTORIES(include/static_triangle_counting)
 
 # Adding external libraries
@@ -30,8 +31,8 @@ set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++11")
 SET(CUDA_PROPAGATE_HOST_FLAGS OFF)
 
 LIST(APPEND CUDA_NCCC_FLAGS --compiler-options)
-LIST(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_35,code=sm_35)
-LIST(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_50,code=sm_50)
+# LIST(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_35,code=sm_35)
+# LIST(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_50,code=sm_50)
 LIST(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_60,code=sm_60)
 LIST(APPEND CUDA_NVCC_FLAGS "-O3;-DVERBOSE;")
 LIST(APPEND CUDA_NVCC_FLAGS "-Xcompiler -Wall -D_FORCE_INLINES; --expt-extended-lambda;-use_fast_math")
@@ -53,12 +54,13 @@ set(cuSTINGER_INCLUDE_DIR
   CACHE PATH
   "Directory to the cuSTINGER include files")
 
+
 INCLUDE_DIRECTORIES(${cuSTINGER_INCLUDE_DIR})
 
 #Useful for building a library of algorithms
 cuda_add_library(custingerAlgs
-          src/streaming_triangle_counting/cct_upd.cu
-          src/static_triangle_counting/cct.cu
+          # src/streaming_triangle_counting/cct_upd.cu
+          # src/static_triangle_counting/cct.cu
           src/static_breadth_first_search/bfs_top_down.cu
           src/static_breadth_first_search/bfs_bottom_up.cu
           src/static_breadth_first_search/bfs_hybrid.cu
@@ -72,17 +74,19 @@ cuda_add_library(custingerAlgs
           src/load_balance.cu
           src/static_betweenness_centrality/bc.cu
           src/static_betweenness_centrality/bc_tree.cu
+          src/static_k_truss/ktruss.cu
+          src/static_k_truss/ktruss-truss.cu
         )
 
 
-cuda_add_executable(cuAlgCCT 
-          tests/cct.cpp
-          tests/cct_csr.cu
-           )
+# cuda_add_executable(cuAlgCCT 
+#           tests/cct.cpp
+#           tests/cct_csr.cu
+#            )
 
-cuda_add_executable(cuAlgStCCT 
-          tests/cct_upd.cpp
-           )
+# cuda_add_executable(cuAlgStCCT 
+#           tests/cct_upd.cpp
+#            )
 
 cuda_add_executable(static_bc_tester
           tests/static_bc.cu
@@ -100,10 +104,18 @@ cuda_add_executable(katz-tester
           tests/katz-tester.cu
            )
 
+cuda_add_executable(ktruss 
+          # tests/cct.cpp
+          tests/ktruss-tester.cu
+           )
+
+
 TARGET_LINK_LIBRARIES(static_bc_tester custingerAlgs custinger  /usr/local/cuda/lib64/libcudart.so)
-TARGET_LINK_LIBRARIES(cuAlgCCT custingerAlgs custinger  /usr/local/cuda/lib64/libcudart.so)
-TARGET_LINK_LIBRARIES(cuAlgStCCT custingerAlgs custinger  /usr/local/cuda/lib64/libcudart.so)
+# TARGET_LINK_LIBRARIES(cuAlgCCT custingerAlgs custinger  /usr/local/cuda/lib64/libcudart.so)
+# TARGET_LINK_LIBRARIES(cuAlgStCCT custingerAlgs custinger  /usr/local/cuda/lib64/libcudart.so)
 
 TARGET_LINK_LIBRARIES(cus-alg-tester custingerAlgs custinger /usr/local/cuda/lib64/libcudart.so)
 
 TARGET_LINK_LIBRARIES(katz-tester custingerAlgs custinger /usr/local/cuda/lib64/libcudart.so)
+
+TARGET_LINK_LIBRARIES(ktruss custingerAlgs custinger /usr/local/cuda/lib64/libcudart.so)

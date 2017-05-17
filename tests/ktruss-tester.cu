@@ -10,10 +10,10 @@
 #include "update.hpp"
 #include "cuStinger.hpp"
 
-#include "static_triangle_counting/cct.hpp"
+// #include "static_triangle_counting/cct.hpp"
 
-#include "static_k_truss/k_truss.cuh"
-
+#include "static_k_truss/k_truss.cuh"	
+using namespace cuStingerAlgs;
 
 
 #define CUDA(call, ...) do {                        \
@@ -30,9 +30,9 @@
 //     int * const __restrict__ outPutTriangles, const int threads_per_block,
 //     const int number_blocks, const int shifter, const int thread_blocks, const int blockdim);
 
-void KTrussOneIteration(cuStinger& custing,
-    triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
-    const int number_blocks, const int shifter, const int thread_blocks, const int blockdim);
+// void KTrussOneIteration(cuStinger& custing,
+//     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
+//     const int number_blocks, const int shifter, const int thread_blocks, const int blockdim);
 
 
 // CPU Version - assume sorted index lists. 
@@ -107,14 +107,19 @@ void hostCountTriangles (const vertexId_t nv, const length_t * off,
 #define PAR_SHIFT    8
 
 
-int arrayBlocks[]={16000};
-int arrayBlockSize[]={32,64,96,128,192,256};
-int arrayThreadPerIntersection[]={1,2,4,8,16,32};
-int arrayThreadShift[]={0,1,2,3,4,5};
+// int arrayBlocks[]={16000};
+// int arrayBlockSize[]={32,64,96,128,192,256};
+// int arrayThreadPerIntersection[]={1,2,4,8,16,32};
+// int arrayThreadShift[]={0,1,2,3,4,5};
 // int arrayBlocks[]={64000};
 // int arrayBlockSize[]={256};
 // int arrayThreadPerIntersection[]={32};
 // int arrayThreadShift[]={5};
+
+int arrayBlocks[]={16000};
+int arrayBlockSize[]={128,192,256};
+int arrayThreadPerIntersection[]={8,16,32};
+int arrayThreadShift[]={3,4,5};
 
 
 void initHostTriangleArray(triangle_t* h_triangles, vertexId_t nv){	
@@ -143,26 +148,26 @@ int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, length
 		
 	struct cudaDeviceProp prop;
 	cudaGetDeviceProperties	(&prop,device);	
-    length_t *d_off = NULL;
+    length_t *d_off = NULL;	
     vertexId_t* d_ind = NULL;
 	triangle_t *d_triangles = NULL;  
 
    	int * triNE = (int *) malloc ((ne ) * sizeof (int));	
 	int64_t allTrianglesCPU=0;
 	
-	if(run&1){
-		cudaEvent_t startCPU, stopCPU;
-		float timeCPU;
-		cudaEventCreate(&startCPU); cudaEventCreate(&stopCPU);
-		cudaEventRecord(startCPU, 0);
-		hostCountTriangles (nv, off,ind, triNE, &allTrianglesCPU);
-		cudaEventRecord(stopCPU, 0);cudaEventSynchronize(stopCPU);
+	// if(run&1){
+	// 	cudaEvent_t startCPU, stopCPU;
+	// 	float timeCPU;
+	// 	cudaEventCreate(&startCPU); cudaEventCreate(&stopCPU);
+	// 	cudaEventRecord(startCPU, 0);
+	// 	hostCountTriangles (nv, off,ind, triNE, &allTrianglesCPU);
+	// 	cudaEventRecord(stopCPU, 0);cudaEventSynchronize(stopCPU);
 		
-		cudaThreadSynchronize();cudaEventElapsedTime(&timeCPU, startCPU, stopCPU);
-		// STAND_PRINTF("CPU", timeCPU,allTrianglesCPU)
-	}	
+	// 	cudaThreadSynchronize();cudaEventElapsedTime(&timeCPU, startCPU, stopCPU);
+	// 	// STAND_PRINTF("CPU", timeCPU,allTrianglesCPU)
+	// }	
 
-	if(run&2){
+	// if(run&2){
 		cudaSetDevice(device);
 		CUDA(cudaMalloc(&d_off, sizeof(length_t)*(nv+1)));
 		CUDA(cudaMalloc(&d_ind, sizeof(vertexId_t)*ne));
@@ -190,28 +195,53 @@ int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, length
 					int shifter=arrayThreadShift[t];
 					int nbl=sps/tsp;
 
+				cuStinger custing(defaultInitAllocater,defaultUpdateAllocater);
+
+				cuStingerInitConfig cuInit;
+				cuInit.initState =eInitStateCSR;
+				cuInit.maxNV = nv+1;
+				cuInit.useVWeight = false;cuInit.isSemantic = false; cuInit.useEWeight = false;
+				cuInit.csrNV 			= nv;	cuInit.csrNE	   		= ne;
+				cuInit.csrOff 			= off;	cuInit.csrAdj 			= ind;
+				cuInit.csrVW 			= NULL;	cuInit.csrEW			= NULL;
+
+				custing.initializeCuStinger(cuInit);
+
 					cudaEvent_t ce_start,ce_stop;
+					float totalTime;
+
+					kTruss kt;
+					int maxK=13;
+					kt.setInitParameters(nv,ne,maxK, tsp,nbl,shifter,blocks, sps);
+					kt.Init(custing);
+					kt.copyOffsetArrayDevice(d_off);
+					kt.Reset();
+					start_clock(ce_start, ce_stop);
+					kt.Run(custing);
+						// KTrussOneIteration(custing, d_triangles, tsp,nbl,shifter,blocks, sps);
+
+					totalTime = end_clock(ce_start, ce_stop);
+					cout << "Total time for k-Truss = " << maxK << " : " << totalTime << endl; 
+					cout << "The number of iterations           : " << kt.getCurrK() << endl;
+					cout << "The number of iterations           : " << kt.getCurrK() << endl;
+
+					kt.Release();
+
+					if(totalTime<minTimecuStinger) minTimecuStinger=totalTime; 
+
+				custing.freecuStinger();
+
 
 					// CUDA(cudaMemcpy(d_triangles, h_triangles, sizeof(triangle_t)*(nv+1), cudaMemcpyHostToDevice));
 					// start_clock(ce_start, ce_stop);
-					// 	callDeviceAllTrianglesCSR(nv,d_off, d_ind, d_triangles, tsp,nbl,shifter,blocks, sps);
+					// 	KTrussOneIteration(custing, d_triangles, tsp,nbl,shifter,blocks, sps);
 					// time = end_clock(ce_start, ce_stop);
 					// CUDA(cudaMemcpy(h_triangles, d_triangles, sizeof(triangle_t)*(nv+1), cudaMemcpyDeviceToHost));
 
-					// if(time<minTime) minTime=time; 
+					// if(time<minTimecuStinger) minTimecuStinger=time; 
 					// sumDevice=sumTriangleArray(h_triangles,nv);initHostTriangleArray(h_triangles,nv);
-					// printf("!!! %d %d %d %d %d \t\t %ld \t %f\n", blocks,sps, tsp, nbl, shifter,sumDevice, time);
 
-					CUDA(cudaMemcpy(d_triangles, h_triangles, sizeof(triangle_t)*(nv+1), cudaMemcpyHostToDevice));
-					start_clock(ce_start, ce_stop);
-						KTrussOneIteration(custing, d_triangles, tsp,nbl,shifter,blocks, sps);
-					time = end_clock(ce_start, ce_stop);
-					CUDA(cudaMemcpy(h_triangles, d_triangles, sizeof(triangle_t)*(nv+1), cudaMemcpyDeviceToHost));
-
-					if(time<minTimecuStinger) minTimecuStinger=time; 
-					sumDevice=sumTriangleArray(h_triangles,nv);initHostTriangleArray(h_triangles,nv);
-
-					printf("### %d %d %d %d %d \t\t %ld \t %f\n", blocks,sps, tsp, nbl, shifter,sumDevice, time);
+					// printf("### %d %d %d %d %d \t\t %ld \t %f\n", blocks,sps, tsp, nbl, shifter,sumDevice, time);
 			    }
 			}	
 		}
@@ -227,7 +257,7 @@ int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, length
 		CUDA(cudaFree(d_off));
 		CUDA(cudaFree(d_ind));
 		CUDA(cudaFree(d_triangles));
-	}
+	// }
 	free(triNE);
     return 0;
 }
@@ -262,7 +292,8 @@ int main(const int argc, char *argv[]){
 	else{ 
 		cout << "Unknown graph type" << endl;
 	}
-	cout << "Vertices: " << nv << "    Edges: " << ne << endl;
+
+	cout << "Vertices: " << nv << "    Edges: " << ne  << "      " << off[nv] << endl;
 
 	cudaEvent_t ce_start,ce_stop;
 	cuStinger custing(defaultInitAllocater,defaultUpdateAllocater);
@@ -286,6 +317,8 @@ int main(const int argc, char *argv[]){
 	comparecuStingerAndCSR(custing,nv,ne,off,adj);
 
 	custing.freecuStinger();
+	cout << "Vertices: " << nv << "    Edges: " << ne  << endl;
+
 
 	free(off);
 	free(adj);

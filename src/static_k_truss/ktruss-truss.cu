@@ -1,6 +1,5 @@
 
 
-
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -15,53 +14,80 @@
 
 #include "static_k_truss/k_truss.cuh"	
 
+using namespace cuStingerAlgs;
+
+void KTrussOneIteration(cuStinger& custing,
+    triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
+    const int number_blocks, const int shifter, const int thread_blocks, const int blockdim, kTrussData* devData);
+
+
 namespace cuStingerAlgs {
 
 /// TODO - changed hostKatzdata to pointer so that I can try to inherit it in the streaming case.
 	
 
 
-void kTruss::setInitParameters(length_t nv, length_t ne,length_t maxK){
+
+void kTruss::setInitParameters(length_t nv, length_t ne,length_t maxK, int tsp, int nbl, int shifter,int blocks, int  sps){
 	hostKTrussData.nv 	= nv;
 	hostKTrussData.ne 	= ne;
 	hostKTrussData.maxK = maxK;
+	hostKTrussData.currK = 3;
 
+	hostKTrussData.tsp 		= tsp;
+	hostKTrussData.nbl 		= nbl;
+	hostKTrussData.shifter 	= shifter;
+	hostKTrussData.blocks 	= blocks;
+	hostKTrussData.sps 		=sps;
+
+
+	if (hostKTrussData.currK>hostKTrussData.maxK){
+		cout << "**** The smallest supported TRUSS is k=3 ****" << endl;
+	}
 }
 
 
 void kTruss::Init(cuStinger& custing){
 
-	hostKTrussData.isActive 		 = (bool*) allocDeviceArray(hostKTrussData.nv, sizeof(bool));
-	hostKTrussData.offsetArray	     =  (length_t*) allocDeviceArray(hostKTrussData.nv, sizeof(length_t));
+	hostKTrussData.isActive 		 =  (int32_t*) allocDeviceArray(hostKTrussData.nv, sizeof(int32_t));
+	hostKTrussData.offsetArray	     =  (int32_t*) allocDeviceArray(hostKTrussData.nv+1, sizeof(int32_t));
+	hostKTrussData.trianglePerVertex =  (triangle_t*) allocDeviceArray(hostKTrussData.nv, sizeof(triangle_t));
 	hostKTrussData.trianglePerEdge	 =  (triangle_t*) allocDeviceArray(hostKTrussData.ne, sizeof(triangle_t));
+	hostKTrussData.src				 =  (vertexId_t*) allocDeviceArray(hostKTrussData.ne, sizeof(vertexId_t));
+	hostKTrussData.dst	 			 =  (vertexId_t*) allocDeviceArray(hostKTrussData.ne, sizeof(vertexId_t));
 
 	deviceKTrussData = (kTrussData*)allocDeviceArray(1, sizeof(kTrussData));
+
 	cusLB = new cusLoadBalance(custing);
 
 	SyncDeviceWithHost();
 	Reset();
+}
 
-	cout << "--------------------------------------" << endl << "ODED - YOU NEED to copy the CSR OFFSET ARRAY" << endl << "--------------------------------------" << endl;
+void kTruss::copyOffsetArrayHost(length_t* hostOffsetArray){
+	copyArrayHostToDevice(hostOffsetArray, hostKTrussData.offsetArray, hostKTrussData.nv+1, sizeof(length_t));
+}
+
+void kTruss::copyOffsetArrayDevice(length_t* deviceOffsetArray){
+	copyArrayDeviceToDevice(deviceOffsetArray, hostKTrussData.offsetArray, hostKTrussData.nv+1, sizeof(length_t));
 }
 
 void kTruss::Reset(){
-	// hostKTrussData.iteration = 1;
-
+	hostKTrussData.currK 	= 3;
+	hostKTrussData.counter 	= 0;
 	resetEdgeArray();
-	// if(isStatic==true){
-	// 	hostKTrussData.nPathsPrev = hostKTrussData.nPathsData;
-	// 	hostKTrussData.nPathsCurr = hostKTrussData.nPathsData+(hostKTrussData.nv);
-	// }
-	// else{
-	// 	hostKTrussData.nPathsPrev = hPathsPtr[0];
-	// 	hostKTrussData.nPathsCurr = hPathsPtr[1];
-	// }
-	// SyncDeviceWithHost();
+	resetVertexArray();
 
+	SyncDeviceWithHost();
 }
 
+void kTruss::resetVertexArray(){
+	cudaMemset((void*)hostKTrussData.trianglePerVertex,0,hostKTrussData.nv*sizeof(int));
+}
+
+
 void kTruss::resetEdgeArray(){
-	cudaMemset((void*)hostKTrussData.trianglePerEdge,0,hostKTrussData.ne);
+	cudaMemset((void*)hostKTrussData.trianglePerEdge,0,hostKTrussData.ne*sizeof(int));
 }
 
 void kTruss::Release(){
@@ -70,6 +96,7 @@ void kTruss::Release(){
 	freeDeviceArray(hostKTrussData.isActive);
 	freeDeviceArray(hostKTrussData.offsetArray);
 	freeDeviceArray(hostKTrussData.trianglePerEdge);
+	freeDeviceArray(hostKTrussData.trianglePerVertex);
 
 	freeDeviceArray(deviceKTrussData);
 
@@ -77,10 +104,65 @@ void kTruss::Release(){
 
 void kTruss::Run(cuStinger& custing){
 
-	// allVinG_TraverseVertices<kTrussOperator::init>(custing,deviceKTrussData);
-	// standard_context_t context(false);
+	allVinG_TraverseVertices<kTrussOperators::init>(custing,deviceKTrussData);
 
-	// hostKTrussData.iteration = 1;
+	Reset();
+	hostKTrussData.activeVertices=custing.nv;
+	SyncDeviceWithHost();
+
+	while(hostKTrussData.currK  < hostKTrussData.maxK && hostKTrussData.activeVertices>0){
+
+
+		KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
+				hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
+				deviceKTrussData);
+
+		allVinG_TraverseVertices<kTrussOperators::findUnderK>(custing,deviceKTrussData);
+		SyncHostWithDevice();
+		cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+		BatchUpdateData *bud;
+		BatchUpdate* bu;
+		if(hostKTrussData.counter!=0){
+			bud = new BatchUpdateData(hostKTrussData.counter,true);
+			copyArrayDeviceToHost(hostKTrussData.src,bud->getSrc(),hostKTrussData.counter,sizeof(int));
+			copyArrayDeviceToHost(hostKTrussData.dst,bud->getDst(),hostKTrussData.counter,sizeof(int));
+
+			bu = new BatchUpdate(*bud);
+
+			// for(int32_t e=0; e<hostKTrussData.counter; e++){
+			// 	if(bud->getSrc()[e]> 18772|| bud->getDst()[e] > 18772 )
+			// 	printf("Batch update: (#%d) (%d %d)\n", e,bud->getSrc()[e],bud->getDst()[e]);
+			// }
+			length_t allocs;
+			custing.edgeInsertions(*bu,allocs);
+			custing.edgeDeletions(*bu);
+			// cudaEvent_t ce_start,ce_stop;
+			// start_clock(ce_start, ce_stop);
+
+		}
+
+		hostKTrussData.activeVertices=0;
+		SyncDeviceWithHost();
+
+		allVinG_TraverseVertices<kTrussOperators::countActive>(custing,deviceKTrussData);
+		SyncHostWithDevice();
+
+		resetEdgeArray();
+		resetVertexArray();
+
+		if(hostKTrussData.counter!=0){
+			delete bu;
+			delete bud;
+		}
+
+
+
+		hostKTrussData.currK++;
+		hostKTrussData.counter 	= 0;
+
+		SyncDeviceWithHost();
+	}
+
 	
 	// hostKTrussData.nActive = hostKTrussData.nv;
 	// while(hostKTrussData.nActive  > hostKTrussData.K && hostKTrussData.iteration < hostKTrussData.maxIteration){

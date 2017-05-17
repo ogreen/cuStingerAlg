@@ -14,6 +14,7 @@
 // #include "static_triangle_counting/cct.hpp"
 #include "static_k_truss/k_truss.cuh"	
 
+using namespace cuStingerAlgs;
  
 __device__ void conditionalWarpReduceIP(volatile triangle_t* sharedData,int blockSize,int dataLength){
   if(blockSize >= dataLength){
@@ -225,7 +226,7 @@ __device__ void workPerBlockIP(const vertexId_t numVertices,
 
 __global__ void devicecuStingerKTruss(cuStinger* custing,
     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
-    const int number_blocks, const int shifter)
+    const int number_blocks, const int shifter,kTrussData* devData)
 {
 	vertexId_t nv = custing->nv;
 	// Partitioning the work to the multiple thread of a single GPU processor. The threads should get a near equal number of the elements to intersect - this number will be off by no more than one.
@@ -269,10 +270,13 @@ __global__ void devicecuStingerKTruss(cuStinger* custing,
 	        // int const * const large_ptr = d_ind + d_off[large];
 	        const vertexId_t* small_ptr = custing->dVD->getAdj()[small]->dst;
 	        const vertexId_t* large_ptr = custing->dVD->getAdj()[large]->dst;
-	        tCount += singleIntersection(small, small_ptr, small_len,
+	        triangle_t triFound = singleIntersection(small, small_ptr, small_len,
 						large,large_ptr, large_len,
 						threads_per_block,firstFoundPos,
 						tx%threads_per_block);
+	        tCount +=triFound;
+	        int pos=devData->offsetArray[src]+k;
+	        atomicAdd(devData->trianglePerEdge+pos,triFound);
 		}
 		s_triangles[tx] = tCount;
 		blockReduceIP(&outPutTriangles[src],s_triangles,blockSize);
@@ -281,9 +285,9 @@ __global__ void devicecuStingerKTruss(cuStinger* custing,
 
 void KTrussOneIteration(cuStinger& custing,
     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
-    const int number_blocks, const int shifter, const int thread_blocks, const int blockdim){
+    const int number_blocks, const int shifter, const int thread_blocks, const int blockdim, kTrussData* devData){
 
-	devicecuStingerKTruss<<<thread_blocks, blockdim>>>(custing.devicePtr(), outPutTriangles, threads_per_block,number_blocks,shifter);
+	devicecuStingerKTruss<<<thread_blocks, blockdim>>>(custing.devicePtr(), outPutTriangles, threads_per_block,number_blocks,shifter,devData);
 }
 
 
