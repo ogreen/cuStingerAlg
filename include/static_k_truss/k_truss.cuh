@@ -82,7 +82,12 @@ static __device__ void init(cuStinger* custing,vertexId_t src, void* metadata){
 static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
 
+
 	length_t srcLen=custing->dVD->used[src];
+	// if (src==1021)
+	// 	printf("----- %d \n",srcLen);
+
+
 	if(kt->isActive[src]==0)
 		return;
 	if(srcLen==0){
@@ -115,7 +120,6 @@ static __device__ void countActive(cuStinger* custing,vertexId_t src, void* meta
 		kt->isActive[src]=0;
 	}
 	else{
-		int* ptr = &kt->activeVertices;
 		atomicAdd(&(kt->activeVertices), 1);
 	}
 }

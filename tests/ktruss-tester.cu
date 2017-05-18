@@ -117,9 +117,9 @@ void hostCountTriangles (const vertexId_t nv, const length_t * off,
 // int arrayThreadShift[]={5};
 
 int arrayBlocks[]={16000};
-int arrayBlockSize[]={128,192,256};
-int arrayThreadPerIntersection[]={8,16,32};
-int arrayThreadShift[]={3,4,5};
+int arrayBlockSize[]={192};
+int arrayThreadPerIntersection[]={8};
+int arrayThreadShift[]={3};
 
 
 void initHostTriangleArray(triangle_t* h_triangles, vertexId_t nv){	
@@ -136,7 +136,7 @@ int64_t sumTriangleArray(triangle_t* h_triangles, vertexId_t nv){
 	return sum;
 }
 
-int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, length_t*  off,vertexId_t*  ind)
+int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, int maxK, length_t*  off,vertexId_t*  ind)
 {
 	int device = 0;
 	int run    = 2;
@@ -211,7 +211,6 @@ int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, length
 					float totalTime;
 
 					kTruss kt;
-					int maxK=13;
 					kt.setInitParameters(nv,ne,maxK, tsp,nbl,shifter,blocks, sps);
 					kt.Init(custing);
 					kt.copyOffsetArrayDevice(d_off);
@@ -293,6 +292,8 @@ int main(const int argc, char *argv[]){
 		cout << "Unknown graph type" << endl;
 	}
 
+	int maxK = atoi(argv[2]);
+
 	cout << "Vertices: " << nv << "    Edges: " << ne  << "      " << off[nv] << endl;
 
 	cudaEvent_t ce_start,ce_stop;
@@ -314,7 +315,7 @@ int main(const int argc, char *argv[]){
 
 	custing.initializeCuStinger(cuInit);
 
-	comparecuStingerAndCSR(custing,nv,ne,off,adj);
+	comparecuStingerAndCSR(custing,nv,ne,maxK,off,adj);
 
 	custing.freecuStinger();
 	cout << "Vertices: " << nv << "    Edges: " << ne  << endl;

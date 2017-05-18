@@ -117,31 +117,36 @@ void kTruss::Run(cuStinger& custing){
 				hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
 				deviceKTrussData);
 
+		// cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+
 		allVinG_TraverseVertices<kTrussOperators::findUnderK>(custing,deviceKTrussData);
 		SyncHostWithDevice();
-		cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+		// cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
 		BatchUpdateData *bud;
 		BatchUpdate* bu;
 		if(hostKTrussData.counter!=0){
-			bud = new BatchUpdateData(hostKTrussData.counter,true);
+			bud = new BatchUpdateData(hostKTrussData.counter,true,hostKTrussData.nv);
 			copyArrayDeviceToHost(hostKTrussData.src,bud->getSrc(),hostKTrussData.counter,sizeof(int));
 			copyArrayDeviceToHost(hostKTrussData.dst,bud->getDst(),hostKTrussData.counter,sizeof(int));
 
 			bu = new BatchUpdate(*bud);
 
+			bu->sortDeviceBUD(hostKTrussData.sps);
+			// cout << "Hello" << endl;
 			// for(int32_t e=0; e<hostKTrussData.counter; e++){
 			// 	if(bud->getSrc()[e]> 18772|| bud->getDst()[e] > 18772 )
 			// 	printf("Batch update: (#%d) (%d %d)\n", e,bud->getSrc()[e],bud->getDst()[e]);
 			// }
-			length_t allocs;
-			custing.edgeInsertions(*bu,allocs);
-			custing.edgeDeletions(*bu);
-			// cudaEvent_t ce_start,ce_stop;
-			// start_clock(ce_start, ce_stop);
+			// length_t allocs;
+			// custing.edgeInsertions(*bu,allocs);
+			custing.edgeDeletionsSorted(*bu);
+			delete bu;
+			delete bud;
 
 		}
 
 		hostKTrussData.activeVertices=0;
+	
 		SyncDeviceWithHost();
 
 		allVinG_TraverseVertices<kTrussOperators::countActive>(custing,deviceKTrussData);
@@ -150,15 +155,9 @@ void kTruss::Run(cuStinger& custing){
 		resetEdgeArray();
 		resetVertexArray();
 
-		if(hostKTrussData.counter!=0){
-			delete bu;
-			delete bud;
-		}
-
-
 
 		hostKTrussData.currK++;
-		hostKTrussData.counter 	= 0;
+		hostKTrussData.counter=0;
 
 		SyncDeviceWithHost();
 	}
