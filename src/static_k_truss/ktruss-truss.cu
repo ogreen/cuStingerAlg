@@ -23,10 +23,6 @@ void KTrussOneIteration(cuStinger& custing,
 
 namespace cuStingerAlgs {
 
-/// TODO - changed hostKatzdata to pointer so that I can try to inherit it in the streaming case.
-	
-
-
 
 void kTruss::setInitParameters(length_t nv, length_t ne,length_t maxK, int tsp, int nbl, int shifter,int blocks, int  sps){
 	hostKTrussData.nv 	= nv;
@@ -109,9 +105,10 @@ void kTruss::Run(cuStinger& custing){
 	Reset();
 	hostKTrussData.activeVertices=custing.nv;
 	SyncDeviceWithHost();
+	int sumDeletedEdges=0;
 
-	while(hostKTrussData.currK  < hostKTrussData.maxK && hostKTrussData.activeVertices>0){
-
+	//while(hostKTrussData.currK  < hostKTrussData.maxK && hostKTrussData.activeVertices>0){
+	while(hostKTrussData.activeVertices>0){
 
 		KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
 				hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
@@ -121,7 +118,8 @@ void kTruss::Run(cuStinger& custing){
 
 		allVinG_TraverseVertices<kTrussOperators::findUnderK>(custing,deviceKTrussData);
 		SyncHostWithDevice();
-		// cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+		cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+		sumDeletedEdges+=hostKTrussData.counter;
 		BatchUpdateData *bud;
 		BatchUpdate* bu;
 		if(hostKTrussData.counter!=0){
@@ -144,6 +142,8 @@ void kTruss::Run(cuStinger& custing){
 			delete bud;
 
 		}
+		else
+			break;
 
 		hostKTrussData.activeVertices=0;
 	
@@ -154,56 +154,19 @@ void kTruss::Run(cuStinger& custing){
 
 		resetEdgeArray();
 		resetVertexArray();
-
-
+		
+        cout << "Number of active vertices is : " << hostKTrussData.activeVertices   << endl;
 		hostKTrussData.currK++;
 		hostKTrussData.counter=0;
 
 		SyncDeviceWithHost();
+
+		if(hostKTrussData.currK >= (hostKTrussData.maxK-2))
+		  break;
 	}
-
-	
-	// hostKTrussData.nActive = hostKTrussData.nv;
-	// while(hostKTrussData.nActive  > hostKTrussData.K && hostKTrussData.iteration < hostKTrussData.maxIteration){
-
-	// 	hostKTrussData.alphaI          = pow(hostKTrussData.alpha,hostKTrussData.iteration);
-	// 	hostKTrussData.lowerBoundConst = pow(hostKTrussData.alpha,hostKTrussData.iteration+1)/((1.0-hostKTrussData.alpha));
-	// 	hostKTrussData.upperBoundConst = pow(hostKTrussData.alpha,hostKTrussData.iteration+1)/((1.0-hostKTrussData.alpha*(double)hostKTrussData.maxDegree));
-	// 	hostKTrussData.nActive = 0; // Each iteration the number of active vertices is set to zero.
-	
-	// 	SyncDeviceWithHost(); // Passing constants to the device.
-
-	// 	allVinG_TraverseVertices<kTrussOperator::initNumPathsPerIteration>(custing,deviceKTrussData);
-	// 	allVinA_TraverseEdges_LB<kTrussOperator::updatePathCount>(custing,deviceKTrussData,*cusLB);
-	// 	allVinG_TraverseVertices<kTrussOperator::updateKatzAndBounds>(custing,deviceKTrussData);
-
-	// 	SyncHostWithDevice();
-	// 	hostKTrussData.iteration++;
-
-	// 	if(isStatic){
-	// 		// Swapping pointers.
-	// 		ulong_t* temp = hostKTrussData.nPathsCurr; hostKTrussData.nPathsCurr=hostKTrussData.nPathsPrev; hostKTrussData.nPathsPrev=temp;	
-	// 	}else{
-	// 		hostKTrussData.nPathsPrev = hPathsPtr[hostKTrussData.iteration - 1];
-	// 		hostKTrussData.nPathsCurr = hPathsPtr[hostKTrussData.iteration - 0];
-	// 	}
-
-	// 	length_t oldActiveCount = hostKTrussData.nActive;
-	// 	hostKTrussData.nActive = 0; // Resetting active vertices for sorting operations.
-
-	// 	SyncDeviceWithHost();
-
-	// 	mergesort(hostKTrussData.lowerBoundSort,hostKTrussData.vertexArray,oldActiveCount, greater_t<double>(),context);
-
-	// 	// allVinG_TraverseVertices<kTrussOperator::countActive>(custing,deviceKTrussData);
-	// 	allVinA_TraverseVertices<kTrussOperator::countActive>(custing,deviceKTrussData,hostKTrussData.vertexArray,oldActiveCount);
-
-	// 	//allVinA_TraverseVertices<kTrussOperator::printKID>(custing,deviceKTrussData,hostKTrussData.vertexArray, custing.nv);
-	// 	SyncHostWithDevice();
-	// 	cout << hostKTrussData.nActive << endl;
-	// }
-	// // cout << "@@ " << hostKTrussData.iteration << " @@" << endl;
-	// SyncHostWithDevice();
+	cout << "The number of initial edges  : " << hostKTrussData.ne << endl;
+	cout << "The number of delete edges   : " << sumDeletedEdges <<  endl;
+	cout << "The number of leftover edges : " << hostKTrussData.ne - sumDeletedEdges << endl;
 }
 
 // length_t kTruss::getIterationCount(){

@@ -82,11 +82,7 @@ static __device__ void init(cuStinger* custing,vertexId_t src, void* metadata){
 static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
 
-
 	length_t srcLen=custing->dVD->used[src];
-	// if (src==1021)
-	// 	printf("----- %d \n",srcLen);
-
 
 	if(kt->isActive[src]==0)
 		return;
@@ -98,17 +94,13 @@ static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metad
 	for(vertexId_t adj=0; adj<srcLen; adj+=1){
 		vertexId_t dst = adj_src[adj];
 		
-		// int* ptr = &kt->counter;
 		int pos = kt->offsetArray[src]+adj;
 
-		if (kt->trianglePerEdge[pos] < kt->currK){
+		if (kt->trianglePerEdge[pos] < (kt->maxK-2)){
 			int spot = atomicAdd(&(kt->counter), 1);
 			kt->src[spot]=src;
 			kt->dst[spot]=dst;
 		}
-		// else{
-		// 	printf("#### %d %d %d\n",src,dst,kt->trianglePerEdge[pos]);			
-		// }
 	}
 }
 
@@ -116,21 +108,13 @@ static __device__ void countActive(cuStinger* custing,vertexId_t src, void* meta
 	kTrussData* kt = (kTrussData*)metadata;
 
 	length_t srcLen=custing->dVD->used[src];
-	if(srcLen==0){
+	if(srcLen==0 && !kt->isActive[src]){
 		kt->isActive[src]=0;
 	}
 	else{
 		atomicAdd(&(kt->activeVertices), 1);
 	}
 }
-
-
-// // Used every iteration
-// static __device__ void initNumPathsPerIteration(cuStinger* custing,vertexId_t src, void* metadata){
-// 	katzData* kd = (katzData*)metadata;
-// 	kd->nPathsCurr[src]=0;
-// }
-
 
 };
 

@@ -25,86 +25,9 @@ using namespace cuStingerAlgs;
         return -1;                                  \
     } while (0)
 
-// void KTrussOneIteration(const vertexId_t nv,
-//     length_t const * const __restrict__ d_off, vertexId_t const * const __restrict__ d_ind,
-//     int * const __restrict__ outPutTriangles, const int threads_per_block,
-//     const int number_blocks, const int shifter, const int thread_blocks, const int blockdim);
 
-// void KTrussOneIteration(cuStinger& custing,
-//     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
-//     const int number_blocks, const int shifter, const int thread_blocks, const int blockdim);
-
-
-// CPU Version - assume sorted index lists. 
-int hostSingleIntersection (const vertexId_t ai, const length_t alen, const vertexId_t * a,
-						    const vertexId_t bi, const length_t blen, const vertexId_t * b){
-	length_t ka = 0, kb = 0,out = 0;
-	if (!alen || !blen || a[alen-1] < b[0] || b[blen-1] < a[0])
-    	return 0;
-
-	while (1) {
-    	if (ka >= alen || kb >= blen) break;
-		vertexId_t va = a[ka],vb = b[kb];
-
-	    // If you now that you don't have self edges then you don't need to check for them and you can get better performance.
-		#if(0)
-		    // Skip self-edges.
-		    if ((va == ai)) {
-		      ++ka;
-		      if (ka >= alen) break;
-		      va = a[ka];
-		    }
-		    if ((vb == bi)) {
-		      ++kb;
-		      if (kb >= blen) break;
-		      vb = b[kb];
-		    }
-		#endif
-
-	    if (va == vb) {
-	     	++ka; ++kb; ++out;
-	    }
-	    else if (va < vb) {
-	      ++ka;
-	      while (ka < alen && a[ka] < vb) ++ka;
-	    } else {
-	      ++kb;
-	      while (kb < blen && va > b[kb]) ++kb;
-	    }
-	}
-	return out;
-}
-
-void hostCountTriangles (const vertexId_t nv, const length_t * off,
-    const vertexId_t * ind, int * triNE, int64_t* allTriangles)
-{
-	int32_t edge=0;
-	int64_t sum=0;
-    for (vertexId_t src = 0; src < nv; src++)
-    {
-		length_t srcLen=off[src+1]-off[src];
-		for(int iter=off[src]; iter<off[src+1]; iter++)
-		{
-			vertexId_t dest=ind[iter];
-			length_t destLen=off[dest+1]-off[dest];			
-			triNE[edge]= hostSingleIntersection (src, srcLen, ind+off[src],
-													dest, destLen, ind+off[dest]);
-			sum+=triNE[edge++];
-		}
-	}	
-	*allTriangles=sum;
-}
 
 #define STAND_PRINTF(sys, time, triangles) printf("%s : \t%ld \t%f\n", sys,triangles, time);
-
-#define PAR_FILENAME 1
-#define PAR_DEVICE   2
-#define PAR_RUN      3
-#define PAR_BLOCKS   4
-#define PAR_SP       5
-#define PAR_T_SP     6
-#define PAR_NUM_BL   7
-#define PAR_SHIFT    8
 
 
 // int arrayBlocks[]={16000};
@@ -283,7 +206,7 @@ int main(const int argc, char *argv[]){
 	    readGraphDIMACS(argv[1],&off,&adj,&nv,&ne,isRmat);
 	}
 	else if(isSNAP){
-	    readGraphSNAP(argv[1],&off,&adj,&nv,&ne,isRmat);
+	    readGraphSNAP(argv[1],&off,&adj,&nv,&ne,true);
 	}
 	else if(isMarket){
 		readGraphMatrixMarket(argv[1],&off,&adj,&nv,&ne,(isRmat)?false:true);
