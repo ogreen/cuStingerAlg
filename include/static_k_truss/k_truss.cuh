@@ -9,7 +9,6 @@ namespace cuStingerAlgs {
 
 class kTrussData{
 public:
-	int currK;
 	int maxK;
 
 	int tsp;
@@ -31,6 +30,7 @@ public:
 	// int numDeletedEdges;
 	length_t nv;
 	length_t ne; // undirected-edges
+	length_t ne_remaining; // undirected-edges
 
 };
 
@@ -38,11 +38,14 @@ public:
 // Label propogation is based on the values from the previous iteration.
 class kTruss:public StaticAlgorithm{
 public:
-	void setInitParameters(length_t nv, length_t ne,length_t maxK, int tsp, int nbl, int shifter,int blocks, int  sps);
+	void setInitParameters(length_t nv, length_t ne, int tsp, int nbl, int shifter,int blocks, int  sps);
 	virtual void Init(cuStinger& custing);
 
 	virtual void Reset();
 	virtual void Run(cuStinger& custing);
+	bool findTrussOfK(cuStinger& custing,bool& exitedFirstIteration);
+	void RunForK(cuStinger& custing,int maxK);
+
 	virtual void Release();
 
 	void copyOffsetArrayHost(length_t* hostOffsetArray);
@@ -60,7 +63,7 @@ public:
 
 	length_t getIterationCount();
 
-	length_t getCurrK(){return hostKTrussData.currK;}
+	length_t getMaxK(){return hostKTrussData.maxK;}
 
 protected:
 	kTrussData hostKTrussData, *deviceKTrussData;

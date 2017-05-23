@@ -134,24 +134,27 @@ int comparecuStingerAndCSR(cuStinger& custing, vertexId_t nv,length_t ne, int ma
 					float totalTime;
 
 					kTruss kt;
-					kt.setInitParameters(nv,ne,maxK, tsp,nbl,shifter,blocks, sps);
+					kt.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
 					kt.Init(custing);
 					kt.copyOffsetArrayDevice(d_off);
 					kt.Reset();
 					start_clock(ce_start, ce_stop);
-					kt.Run(custing);
+					
+					if(maxK==-1)
+						kt.Run(custing);
+					else
+						kt.RunForK(custing,maxK);
+
+
 						// KTrussOneIteration(custing, d_triangles, tsp,nbl,shifter,blocks, sps);
 
 					totalTime = end_clock(ce_start, ce_stop);
-					cout << "Total time for k-Truss = " << maxK << " : " << totalTime << endl; 
-					cout << "The number of iterations           : " << kt.getCurrK() << endl;
-					cout << "The number of iterations           : " << kt.getCurrK() << endl;
-
+					cout << "Total time for k-Truss = " << kt.getMaxK() << " : " << totalTime << endl; 
 					kt.Release();
 
 					if(totalTime<minTimecuStinger) minTimecuStinger=totalTime; 
 
-				custing.freecuStinger();
+					custing.freecuStinger();
 
 
 					// CUDA(cudaMemcpy(d_triangles, h_triangles, sizeof(triangle_t)*(nv+1), cudaMemcpyHostToDevice));
@@ -214,8 +217,9 @@ int main(const int argc, char *argv[]){
 	else{ 
 		cout << "Unknown graph type" << endl;
 	}
-
-	int maxK = atoi(argv[2]);
+	int maxK=-1;
+	if (argc==3)
+		maxK = atoi(argv[2]);
 
 	cout << "Vertices: " << nv << "    Edges: " << ne  << "      " << off[nv] << endl;
 
