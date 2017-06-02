@@ -20,6 +20,10 @@ void KTrussOneIteration(cuStinger& custing,
     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
     const int number_blocks, const int shifter, const int thread_blocks, const int blockdim, kTrussData* devData);
 
+void callDeviceDifferenceTriangles(cuStinger& custing, BatchUpdate& bu, 
+    triangle_t * const __restrict__ outPutTriangles, const int threads_per_intersection,
+    const int num_intersec_perblock, const int shifter, const int thread_blocks,
+    const int blockdim, bool deletion);
 
 namespace cuStingerAlgs {
 
@@ -64,6 +68,8 @@ void kTruss::copyOffsetArrayDevice(length_t* deviceOffsetArray){
 void kTruss::Reset(){
 	hostKTrussData.counter 	= 0;
 	hostKTrussData.ne_remaining	= hostKTrussData.ne;
+	hostKTrussData.fullTriangleIterations 	= 0;
+
 
 	resetEdgeArray();
 	resetVertexArray();
@@ -97,15 +103,18 @@ void kTruss::Run(cuStinger& custing){
 	hostKTrussData.maxK = 3;SyncDeviceWithHost();
 
 	while(1){
-		bool exitOnFirstIteration=false;
-		bool more = findTrussOfK(custing,exitOnFirstIteration);
-		if(more==false && exitOnFirstIteration){
+		bool needStop=false;
+		bool more = findTrussOfK(custing,needStop);
+		if(more==false && needStop){
 			hostKTrussData.maxK--; SyncDeviceWithHost();
 			break;
 		}
 		hostKTrussData.maxK++; SyncDeviceWithHost();
 	}
 	// cout << "Found the maximal KTruss at : " << hostKTrussData.maxK << endl;
+	cout << "The number of full triangle counting iterations is  : " << hostKTrussData.fullTriangleIterations << endl;
+
+
 }
 
 void kTruss::RunForK(cuStinger& custing,int maxK){
@@ -132,6 +141,10 @@ bool kTruss::findTrussOfK(cuStinger& custing, bool& stop){
 	stop=true;
 
 	while(hostKTrussData.activeVertices>0){
+
+		hostKTrussData.fullTriangleIterations++;
+		SyncDeviceWithHost();
+
 
 		KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
 				hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
@@ -185,6 +198,105 @@ bool kTruss::findTrussOfK(cuStinger& custing, bool& stop){
 	}
 
 	return true;
+}
+
+void kTruss::RunDynamic(cuStinger& custing){
+
+	hostKTrussData.maxK = 3;SyncDeviceWithHost();
+	allVinG_TraverseVertices<kTrussOperators::init>(custing,deviceKTrussData);
+
+	resetEdgeArray();
+	resetVertexArray();
+	SyncDeviceWithHost();
+
+	// KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
+	// 			hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
+	// 			deviceKTrussData);
+	// SyncHostWithDevice();
+
+	// allVinG_TraverseVertices<kTrussOperators::resetWeights>(custing,deviceKTrussData);
+
+	while(1){
+	resetEdgeArray();
+	resetVertexArray();
+	SyncDeviceWithHost();
+		
+	KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
+				hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
+				deviceKTrussData);
+	SyncHostWithDevice();
+
+	allVinG_TraverseVertices<kTrussOperators::resetWeights>(custing,deviceKTrussData);
+
+
+
+		bool needStop=false;
+		bool more = findTrussOfKDynamic(custing,needStop);
+		if(more==false && needStop){
+			hostKTrussData.maxK--; SyncDeviceWithHost();
+			break;
+		}
+		hostKTrussData.maxK++; SyncDeviceWithHost();
+	}
+	cout << "Found the maximal KTruss at : " << hostKTrussData.maxK << endl;
+}
+
+bool kTruss::findTrussOfKDynamic(cuStinger& custing,bool& stop){
+
+	hostKTrussData.counter 	= 0;
+	SyncDeviceWithHost();
+	allVinG_TraverseVertices<kTrussOperators::countActive>(custing,deviceKTrussData);
+	SyncHostWithDevice();
+	stop=true;
+
+	while(hostKTrussData.activeVertices>0){
+
+		allVinG_TraverseVertices<kTrussOperators::findUnderKDynamic>(custing,deviceKTrussData);
+		SyncHostWithDevice();
+		// cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+
+		if(hostKTrussData.counter==hostKTrussData.ne_remaining){
+			stop = true;
+			return false;
+		}
+		if(hostKTrussData.counter!=0){
+			BatchUpdateData *bud;
+			BatchUpdate* bu;
+			bud = new BatchUpdateData(hostKTrussData.counter,true,hostKTrussData.nv);
+			copyArrayDeviceToHost(hostKTrussData.src,bud->getSrc(),hostKTrussData.counter,sizeof(int));
+			copyArrayDeviceToHost(hostKTrussData.dst,bud->getDst(),hostKTrussData.counter,sizeof(int));
+			bu = new BatchUpdate(*bud);
+
+			bu->sortDeviceBUD(hostKTrussData.sps);
+			custing.edgeDeletionsSorted(*bu);
+
+			delete bu;
+			delete bud;
+		}
+		else{
+			return false;
+		}
+		hostKTrussData.ne_remaining-=hostKTrussData.counter;
+
+		hostKTrussData.activeVertices=0;
+	
+		SyncDeviceWithHost();
+
+		allVinG_TraverseVertices<kTrussOperators::countActive>(custing,deviceKTrussData);
+		SyncHostWithDevice();
+	
+		hostKTrussData.counter=0;
+
+		SyncDeviceWithHost();
+		stop=false;
+	}
+
+	return true;
+		
+}
+
+void kTruss::RunForKDynamic(cuStinger& custing,int maxK){
+	
 }
 
 

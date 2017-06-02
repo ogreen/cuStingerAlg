@@ -27,6 +27,8 @@ public:
 	int  counter;
 	int  activeVertices;
 
+	int fullTriangleIterations;
+
 	// int numDeletedEdges;
 	length_t nv;
 	length_t ne; // undirected-edges
@@ -43,8 +45,14 @@ public:
 
 	virtual void Reset();
 	virtual void Run(cuStinger& custing);
-	bool findTrussOfK(cuStinger& custing,bool& exitedFirstIteration);
+	bool findTrussOfK(cuStinger& custing,bool& stop);
 	void RunForK(cuStinger& custing,int maxK);
+
+	void RunDynamic(cuStinger& custing);
+	bool findTrussOfKDynamic(cuStinger& custing,bool& stop);
+	void RunForKDynamic(cuStinger& custing,int maxK);
+
+
 
 	virtual void Release();
 
@@ -81,7 +89,6 @@ static __device__ void init(cuStinger* custing,vertexId_t src, void* metadata){
 	kt->isActive[src]=1;
 }
 
-// Used at the very beginning
 static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
 
@@ -96,7 +103,6 @@ static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metad
 	vertexId_t* adj_src=custing->dVD->adj[src]->dst;
 	for(vertexId_t adj=0; adj<srcLen; adj+=1){
 		vertexId_t dst = adj_src[adj];
-		
 		int pos = kt->offsetArray[src]+adj;
 
 		if (kt->trianglePerEdge[pos] < (kt->maxK-2)){
@@ -106,6 +112,29 @@ static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metad
 		}
 	}
 }
+
+static __device__ void findUnderKDynamic(cuStinger* custing,vertexId_t src, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
+
+	length_t srcLen=custing->dVD->used[src];
+
+	if(kt->isActive[src]==0)
+		return;
+	if(srcLen==0){
+		kt->isActive[src]=0;
+		return;
+	}
+	vertexId_t* adj_src=custing->dVD->adj[src]->dst;
+	for(vertexId_t adj=0; adj<srcLen; adj+=1){
+		vertexId_t dst = adj_src[adj];
+		if (custing->dVD->adj[src]->ew[adj] < (kt->maxK-2)){
+			int spot = atomicAdd(&(kt->counter), 1);
+			kt->src[spot]=src;
+			kt->dst[spot]=dst;
+		}
+	}
+}
+
 
 static __device__ void countActive(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
@@ -119,8 +148,19 @@ static __device__ void countActive(cuStinger* custing,vertexId_t src, void* meta
 	}
 }
 
-};
+static __device__ void resetWeights(cuStinger* custing,vertexId_t src, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
 
+	length_t srcLen=custing->dVD->used[src];
+	int pos=kt->offsetArray[src];
+
+	for(vertexId_t adj=0; adj<srcLen; adj+=1){
+		custing->dVD->adj[src]->ew[adj]=kt->trianglePerEdge[pos+adj];
+	}
+
+}
+
+};
 
 
 } // cuStingerAlgs namespace
