@@ -91,9 +91,7 @@ static __device__ void init(cuStinger* custing,vertexId_t src, void* metadata){
 
 static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
-
 	length_t srcLen=custing->dVD->used[src];
-
 	if(kt->isActive[src]==0)
 		return;
 	if(srcLen==0){
@@ -115,9 +113,7 @@ static __device__ void findUnderK(cuStinger* custing,vertexId_t src, void* metad
 
 static __device__ void findUnderKDynamic(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
-
 	length_t srcLen=custing->dVD->used[src];
-
 	if(kt->isActive[src]==0)
 		return;
 	if(srcLen==0){
@@ -135,10 +131,8 @@ static __device__ void findUnderKDynamic(cuStinger* custing,vertexId_t src, void
 	}
 }
 
-
 static __device__ void countActive(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;
-
 	length_t srcLen=custing->dVD->used[src];
 	if(srcLen==0 && !kt->isActive[src]){
 		kt->isActive[src]=0;

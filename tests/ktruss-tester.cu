@@ -36,9 +36,9 @@ using namespace cuStingerAlgs;
 // int arrayThreadShift[]={5};
 
 int arrayBlocks[]={16000};
-int arrayBlockSize[]={192};
-int arrayThreadPerIntersection[]={8};
-int arrayThreadShift[]={3};
+int arrayBlockSize[]={128};
+int arrayThreadPerIntersection[]={1};
+int arrayThreadShift[]={0};
 
 
 // int arrayBlocks[]={64000};
@@ -135,13 +135,9 @@ int runKtruss(vertexId_t nv,length_t ne, int maxK, length_t*  off,vertexId_t*  i
 					
 					kt2.RunDynamic(custing2);
 
-
 					totalTime = end_clock(ce_start, ce_stop);
 					cout << "Total time for k-Truss = " << kt2.getMaxK() << " : " << totalTime << endl; 
 					kt2.Release();
-
-
-
 
 					if(totalTime<minTimecuStinger) minTimecuStinger=totalTime; 
 

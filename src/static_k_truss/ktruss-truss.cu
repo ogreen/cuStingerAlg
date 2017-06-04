@@ -7,6 +7,8 @@
 
 #include <math.h>
 
+#include "timer.h"
+
 #include "update.hpp"
 #include "cuStinger.hpp"
 
@@ -103,6 +105,10 @@ void kTruss::Run(cuStinger& custing){
 	hostKTrussData.maxK = 3;SyncDeviceWithHost();
 
 	while(1){
+
+	if(hostKTrussData.maxK >=10)
+		break;
+
 		bool needStop=false;
 		bool more = findTrussOfK(custing,needStop);
 		if(more==false && needStop){
@@ -152,7 +158,7 @@ bool kTruss::findTrussOfK(cuStinger& custing, bool& stop){
 
 		allVinG_TraverseVertices<kTrussOperators::findUnderK>(custing,deviceKTrussData);
 		SyncHostWithDevice();
-		// cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+		cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
 		sumDeletedEdges+=hostKTrussData.counter;
 		if(hostKTrussData.counter==hostKTrussData.ne_remaining){
 			stop = true;
@@ -209,18 +215,6 @@ void kTruss::RunDynamic(cuStinger& custing){
 	resetVertexArray();
 	SyncDeviceWithHost();
 
-	// KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
-	// 			hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
-	// 			deviceKTrussData);
-	// SyncHostWithDevice();
-
-	// allVinG_TraverseVertices<kTrussOperators::resetWeights>(custing,deviceKTrussData);
-
-	while(1){
-	resetEdgeArray();
-	resetVertexArray();
-	SyncDeviceWithHost();
-		
 	KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
 				hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
 				deviceKTrussData);
@@ -228,7 +222,20 @@ void kTruss::RunDynamic(cuStinger& custing){
 
 	allVinG_TraverseVertices<kTrussOperators::resetWeights>(custing,deviceKTrussData);
 
+	while(1){
+	// resetEdgeArray();
+	// resetVertexArray();
+	// SyncDeviceWithHost();
+		
+	// KTrussOneIteration(custing, hostKTrussData.trianglePerVertex, hostKTrussData.tsp,
+	// 			hostKTrussData.nbl,hostKTrussData.shifter,hostKTrussData.blocks, hostKTrussData.sps,
+	// 			deviceKTrussData);
+	// SyncHostWithDevice();
 
+	// allVinG_TraverseVertices<kTrussOperators::resetWeights>(custing,deviceKTrussData);
+
+		if(hostKTrussData.maxK >=10)
+		break;
 
 		bool needStop=false;
 		bool more = findTrussOfKDynamic(custing,needStop);
@@ -237,6 +244,7 @@ void kTruss::RunDynamic(cuStinger& custing){
 			break;
 		}
 		hostKTrussData.maxK++; SyncDeviceWithHost();
+		// exit(1);
 	}
 	cout << "Found the maximal KTruss at : " << hostKTrussData.maxK << endl;
 }
@@ -253,7 +261,7 @@ bool kTruss::findTrussOfKDynamic(cuStinger& custing,bool& stop){
 
 		allVinG_TraverseVertices<kTrussOperators::findUnderKDynamic>(custing,deviceKTrussData);
 		SyncHostWithDevice();
-		// cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
+		cout << "Current number of deleted edges is " << hostKTrussData.counter << endl;
 
 		if(hostKTrussData.counter==hostKTrussData.ne_remaining){
 			stop = true;
@@ -263,13 +271,23 @@ bool kTruss::findTrussOfKDynamic(cuStinger& custing,bool& stop){
 			BatchUpdateData *bud;
 			BatchUpdate* bu;
 			bud = new BatchUpdateData(hostKTrussData.counter,true,hostKTrussData.nv);
+
 			copyArrayDeviceToHost(hostKTrussData.src,bud->getSrc(),hostKTrussData.counter,sizeof(int));
 			copyArrayDeviceToHost(hostKTrussData.dst,bud->getDst(),hostKTrussData.counter,sizeof(int));
 			bu = new BatchUpdate(*bud);
 
 			bu->sortDeviceBUD(hostKTrussData.sps);
-			custing.edgeDeletionsSorted(*bu);
 
+			tic();
+			custing.edgeDeletionsSorted(*bu);
+			float haha = toc();
+			tic();
+			callDeviceDifferenceTriangles(custing, *bu, hostKTrussData.trianglePerVertex, 
+			hostKTrussData.tsp, hostKTrussData.nbl,hostKTrussData.shifter,
+			hostKTrussData.blocks, hostKTrussData.sps,true);
+			haha+=toc();
+			cout << "haha : " << haha << endl;
+		
 			delete bu;
 			delete bud;
 		}
