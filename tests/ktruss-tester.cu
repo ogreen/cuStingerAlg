@@ -36,7 +36,7 @@ using namespace cuStingerAlgs;
 // int arrayThreadShift[]={5};
 
 int arrayBlocks[]={16000};
-int arrayBlockSize[]={128};
+int arrayBlockSize[]={64};
 int arrayThreadPerIntersection[]={1};
 int arrayThreadShift[]={0};
 

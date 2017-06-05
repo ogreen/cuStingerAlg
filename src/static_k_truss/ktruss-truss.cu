@@ -106,7 +106,7 @@ void kTruss::Run(cuStinger& custing){
 
 	while(1){
 
-	if(hostKTrussData.maxK >=10)
+	if(hostKTrussData.maxK >=5)
 		break;
 
 		bool needStop=false;
@@ -234,9 +234,9 @@ void kTruss::RunDynamic(cuStinger& custing){
 
 	// allVinG_TraverseVertices<kTrussOperators::resetWeights>(custing,deviceKTrussData);
 
-		if(hostKTrussData.maxK >=10)
+		if(hostKTrussData.maxK >=5)
 		break;
-
+		cout << "New iteration" << endl;
 		bool needStop=false;
 		bool more = findTrussOfKDynamic(custing,needStop);
 		if(more==false && needStop){
@@ -244,7 +244,6 @@ void kTruss::RunDynamic(cuStinger& custing){
 			break;
 		}
 		hostKTrussData.maxK++; SyncDeviceWithHost();
-		// exit(1);
 	}
 	cout << "Found the maximal KTruss at : " << hostKTrussData.maxK << endl;
 }
@@ -278,15 +277,10 @@ bool kTruss::findTrussOfKDynamic(cuStinger& custing,bool& stop){
 
 			bu->sortDeviceBUD(hostKTrussData.sps);
 
-			tic();
 			custing.edgeDeletionsSorted(*bu);
-			float haha = toc();
-			tic();
 			callDeviceDifferenceTriangles(custing, *bu, hostKTrussData.trianglePerVertex, 
 			hostKTrussData.tsp, hostKTrussData.nbl,hostKTrussData.shifter,
 			hostKTrussData.blocks, hostKTrussData.sps,true);
-			haha+=toc();
-			cout << "haha : " << haha << endl;
 		
 			delete bu;
 			delete bud;
