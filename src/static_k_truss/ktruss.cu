@@ -143,8 +143,6 @@ __device__ void intersectCount(cuStinger* custing,const length_t uLength, const 
     vertexId_t const * const __restrict__ uMask, vertexId_t const * const __restrict__ vMask, triangle_t multiplier, 
 	vertexId_t src, vertexId_t dest,vertexId_t u, vertexId_t v)
 {
-
-
   if((*uCurr < uLength) && (*vCurr < vLength)){
     int comp;
     int vmask;
@@ -156,38 +154,44 @@ __device__ void intersectCount(cuStinger* custing,const length_t uLength, const 
 
 		*triangles += (comp == 0 && !umask && !vmask);
 
-		// if(blockIdx.x==0 && subtract && comp==0){
-		// 	printf("After  %d %d\n",*triangles,threadIdx.x);
-		// }
-
-
 		if (upd3rdV && comp == 0 && !umask && !vmask)
 			if (subtract) {
 				atomicSub(outPutTriangles + uNodes[*uCurr], multiplier);
 
-				// if(blockIdx.x==0 && !subtract){
-				// 	printf("*");
-				// }
-
-
 				// Ktruss
-				length_t pos_id = findIndexOfVertex(custing,uNodes[*uCurr],u);
-				if(pos_id!=-1)
-					atomicSub(custing->dVD->adj[uNodes[*uCurr]]->ew+pos_id,1);
-				length_t pos2_id = findIndexOfVertex(custing,uNodes[*uCurr],v);
-				if(pos2_id!=-1)
-					atomicSub(custing->dVD->adj[uNodes[*uCurr]]->ew+pos2_id,1);
+				vertexId_t common = uNodes[*uCurr];
+				length_t pos_id;
+					pos_id = findIndexOfVertex(custing,common,u);
+					if(pos_id!=-1)
+						atomicSub(custing->dVD->adj[common]->ew+pos_id,1);
+					else
+						printf("1");
 
-				pos_id = findIndexOfVertex(custing,u,uNodes[*uCurr]);
-				if(pos_id!=-1)
-					atomicSub(custing->dVD->adj[u]->ew+*uCurr,1);
-				pos2_id = findIndexOfVertex(custing,v,vNodes[*vCurr]);
-				if(pos2_id!=-1)
-					atomicSub(custing->dVD->adj[v]->ew+*vCurr,1);
+					pos_id = findIndexOfVertex(custing,common,v);
+					if(pos_id!=-1)
+						atomicSub(custing->dVD->adj[common]->ew+pos_id,1);
+					else
+						printf("2");
 
+						atomicSub(custing->dVD->adj[u]->ew+*uCurr,1);
+						atomicSub(custing->dVD->adj[v]->ew+*vCurr,1);
+
+					// pos_id = findIndexOfVertex(custing,u,common);
+					// if(pos_id!=-1)
+					// 	atomicSub(custing->dVD->adj[u]->ew+pos_id,1);
+					// else
+					// 	printf("\n3  %d %d %d %d %d %d\n", src, dest, 
+					// 		custing->dVD->getUsed()[src],custing->dVD->getUsed()[dest],
+					// 		custing->dVD->getUsed()[u],custing->dVD->getUsed()[v]);
+					
+					// pos_id = findIndexOfVertex(custing,v,common);
+					// if(pos_id!=-1)
+					// 	atomicSub(custing->dVD->adj[v]->ew+pos_id,1);
+					// else
+					// 	printf("4");
 			}
 			// else {
-			// 	atomicAdd(outPutTriangles + uNodes[*uCurr], multiplier);
+				// 	atomicAdd(outPutTriangles + uNodes[*uCurr], multiplier);
 			// }
 		*uCurr += (comp <= 0 && !vmask) || umask;
 		*vCurr += (comp >= 0 && !umask) || vmask;
@@ -211,6 +215,7 @@ __device__ triangle_t count_triangles(cuStinger* custing,vertexId_t u, vertexId_
     vertexId_t const * const __restrict__ uMask, vertexId_t const * const __restrict__ vMask, triangle_t multiplier, 
 	vertexId_t src, vertexId_t dest)
 {
+
 	// Partitioning the work to the multiple thread of a single GPU processor. The threads should get a near equal number of the elements to Tersect - this number will be off by 1.
 	int work_per_thread, diag_id;
 	workPerThread(u_len, v_len, threads_per_block, tId, &work_per_thread, &diag_id);
@@ -318,26 +323,6 @@ void KTrussOneIteration(cuStinger& custing,
 	devicecuStingerKTruss<<<thread_blocks, blockdim>>>(custing.devicePtr(), outPutTriangles, threads_per_block,number_blocks,shifter,devData);
 }
 
-// __device__ length_t reduceUsed(vertexId_t* adj, vertexId_t u, length_t used)
-// {
-// 	length_t i=0;
-// 	while (adj[i] < u && i < used) i++;
-// 	return i;
-// }
-
-// __global__ void reduceUsedAll(BatchUpdateData *bud, cuStinger* custing, length_t* redCU, length_t* redBU)
-// {
-// 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
-// 	length_t nv = custing->nv;
-// 	if (tid < nv)
-// 	{
-// 		redCU[tid] = reduceUsed(custing->dVD->getAdj()[tid]->dst, tid, custing->dVD->getUsed()[tid]);
-// 		// length_t *d_off = bud->getOffsets();
-// 		// vertexId_t * d_ind = bud->getDst();
-// 		// redBU[tid] = reduceUsed(d_ind + d_off[tid], tid, d_off[tid+1] - d_off[tid]);
-// 	}
-// }
-
 
 __global__ void devicecuStingerNewTriangles(cuStinger* custing, BatchUpdateData *bud,
     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
@@ -349,7 +334,7 @@ __global__ void devicecuStingerNewTriangles(cuStinger* custing, BatchUpdateData 
 	int tx = threadIdx.x;
  	length_t this_mp_start, this_mp_stop;
 
-	length_t *d_off = bud->getOffsets();
+	// length_t *d_off = bud->getOffsets();
 	vertexId_t * d_ind = bud->getDst();
 	vertexId_t * d_seg = bud->getSrc();
 
@@ -367,15 +352,13 @@ __global__ void devicecuStingerNewTriangles(cuStinger* custing, BatchUpdateData 
 		vertexId_t src = d_seg[edge];
 		vertexId_t dest= d_ind[edge];
 
-		if (src > dest) continue;
+		if (src < dest) continue;
 
-		// length_t srcLen=redCU[src];
-		// length_t destLen=redCU[dest];
 		length_t srcLen=custing->dVD->getUsed()[src];
-		length_t destLen=custing->dVD->getUsed()[dest];
+		length_t destLen=custing->dVD->getUsed()[dest];		
 
-		bool avoidCalc = (src == dest) || (destLen < 2) || (srcLen < 2);
-		if(avoidCalc && !deletion)
+		bool avoidCalc = ((src == dest) || (destLen == 0) || (srcLen == 0));
+		if(avoidCalc)
 			continue;
 
 		bool sourceSmaller = (srcLen<destLen);
@@ -383,127 +366,140 @@ __global__ void devicecuStingerNewTriangles(cuStinger* custing, BatchUpdateData 
         vertexId_t large = sourceSmaller? dest : src;
         length_t small_len = sourceSmaller? srcLen : destLen;
         length_t large_len = sourceSmaller? destLen : srcLen;
+		if(small_len==0)
+			printf("hello oded\n");
 
         const vertexId_t* small_ptr = custing->dVD->getAdj()[small]->dst;
-        const vertexId_t* large_ptr = custing->dVD->getAdj()[large]->dst;
+	    const vertexId_t* large_ptr = custing->dVD->getAdj()[large]->dst;
 
-		triangle_t tCount = (deletion)?
-								count_triangles<false,false,true,true>(
-								custing,small, small_ptr, small_len,
-								large,large_ptr, large_len,
-								threads_per_block,firstFoundPos,
-								tx%threads_per_block, outPutTriangles,
-								NULL, NULL, 2,src,dest):
-								count_triangles<false,false,false,true>(
+		// triangle_t tCount = (deletion)?
+		triangle_t tCount = count_triangles<false,false,true,true>(
 								custing,small, small_ptr, small_len,
 								large,large_ptr, large_len,
 								threads_per_block,firstFoundPos,
 								tx%threads_per_block, outPutTriangles,
 								NULL, NULL, 2,src,dest);
-		
-		if (deletion) {
-			atomicSub(outPutTriangles + src, tCount*2);
-			atomicSub(outPutTriangles + dest, tCount*2);
-
-			// Ktruss
-			// length_t dst_id = findIndexOfVertex(custing,src,dest);
-			// // // length_t src_id = findIndexOfVertex(custing,dest,src);
-			// atomicSub(custing->dVD->adj[src]->ew+dst_id,tCount);
-			// // atomicSub(custing->dVD->adj[dest]->ew+src_id,tCount);
-
-		}
-		else {
-			atomicAdd(outPutTriangles + src, tCount*2);
-			atomicAdd(outPutTriangles + dest, tCount*2);
-		}
+								// count_triangles<false,false,false,true>(
+								// custing,small, small_ptr, small_len,
+								// large,large_ptr, large_len,
+								// threads_per_block,firstFoundPos,
+								// tx%threads_per_block, outPutTriangles,
+								// NULL, NULL, 2,src,dest);
+		// if (deletion) {
+		// 	atomicSub(outPutTriangles + src, tCount*2);
+		// 	atomicSub(outPutTriangles + dest, tCount*2);
+		// }
+		// else {
+		// 	atomicAdd(outPutTriangles + src, tCount*2);
+		// 	atomicAdd(outPutTriangles + dest, tCount*2);
+		// }
 		__syncthreads();
 	}
 }
 
-// __global__ void deviceBUThreeTriangles (cuStinger* custing, BatchUpdateData *bud,
-//     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
-//     const int number_blocks, const int shifter, bool deletion,
-//     length_t const * const __restrict__ redBU)
-// {
-// 	length_t batchsize = *(bud->getBatchSize());
-// 	// Partitioning the work to the multiple thread of a single GPU processor. The threads should get a near equal number of the elements to intersect - this number will be off by no more than one.
-// 	int tx = threadIdx.x;
-//  	length_t this_mp_start, this_mp_stop;
-
-// 	length_t *d_off = bud->getOffsets();
-// 	vertexId_t * d_ind = bud->getDst();
-// 	vertexId_t * d_seg = bud->getSrc();
-
-// 	const int blockSize = blockDim.x;
-// 	workPerBlock(batchsize, &this_mp_start, &this_mp_stop, blockSize);
-
-// 	__shared__ vertexId_t firstFound[1024];
-
-// 	length_t adj_offset=tx>>shifter;
-// 	length_t* firstFoundPos=firstFound + (adj_offset<<shifter);
-// 	for (length_t edge = this_mp_start+adj_offset; edge < this_mp_stop; edge+=number_blocks){
-// 		if (bud->getIndDuplicate()[edge]) // this means it's a duplicate edge
-// 			continue;
-			
-// 		vertexId_t src = d_seg[edge];
-// 		vertexId_t dest= d_ind[edge];
-// 		// if (src > dest) continue;
-
-// 		// length_t srcLen= redBU[src];
-// 		// length_t destLen=redBU[dest];
-// 		length_t srcLen= d_off[src+1] - d_off[src];
-// 		length_t destLen=d_off[dest+1] - d_off[dest];
-
-// 		bool avoidCalc = (src == dest) || (destLen < 2) || (srcLen < 2);
-// 		if(avoidCalc && !deletion)
-// 			continue;
-
-// 		bool sourceSmaller = (srcLen<destLen);
-//         vertexId_t small = sourceSmaller? src : dest;
-//         vertexId_t large = sourceSmaller? dest : src;
-//         length_t small_len = sourceSmaller? srcLen : destLen;
-//         length_t large_len = sourceSmaller? destLen : srcLen;
-
-//         vertexId_t const * const small_ptr = d_ind + d_off[small];
-//         vertexId_t const * const large_ptr = d_ind + d_off[large];
-//         vertexId_t const * const small_mask_ptr = bud->getIndDuplicate() + d_off[small];
-//         vertexId_t const * const large_mask_ptr = bud->getIndDuplicate() + d_off[large];
-
-// 		// triangle_t tCount=0;
-
-// 		triangle_t tCount = (deletion)?
-// 								count_triangles<true,true,true,false>(
-// 								custing,small, small_ptr, small_len,
-// 								large,large_ptr, large_len,
-// 								threads_per_block,firstFoundPos,
-// 								tx%threads_per_block, outPutTriangles,
-// 								small_mask_ptr, large_mask_ptr, 2,src,dest):
-// 								count_triangles<true,true,false,false>(
-// 								custing,small, small_ptr, small_len,
-// 								large,large_ptr, large_len,
-// 								threads_per_block,firstFoundPos,
-// 								tx%threads_per_block, outPutTriangles,
-// 								small_mask_ptr, large_mask_ptr, 2,src,dest);
-
-// 		if (deletion){
-// 			atomicSub(outPutTriangles + src, tCount*2);
-
-// 			// Ktruss
-// 			// length_t dst_id = findIndexOfVertex(custing,src,dest);
-// 			// // length_t src_id = findIndexOfVertex(custing,dest,src);
-// 			// atomicSub(custing->dVD->adj[src]->ew+dst_id,tCount);
-// 			// atomicSub(custing->dVD->adj[dest]->ew+src_id,2*tCount);
 
 
-// 		} else{
-// 			atomicAdd(outPutTriangles + src, tCount*2);
-// 		} 
 
 
-// 		// atomicAdd(outPutTriangles + dest, tCount);
-// 		__syncthreads();
-// 	}
-// }
+template <bool uMasked, bool vMasked, bool subtract, bool upd3rdV>
+__device__ void intersectCountAsymmetric(cuStinger* custing,const length_t uLength, const length_t vLength,
+    vertexId_t const * const __restrict__ uNodes, vertexId_t const * const __restrict__ vNodes,
+    length_t * const __restrict__ uCurr, length_t * const __restrict__ vCurr,
+    int * const __restrict__ workIndex, int * const __restrict__ workPerThread,
+    int * const __restrict__ triangles, int found, triangle_t * const __restrict__ outPutTriangles, 
+    vertexId_t const * const __restrict__ uMask, vertexId_t const * const __restrict__ vMask, triangle_t multiplier, 
+	vertexId_t src, vertexId_t dest,vertexId_t u, vertexId_t v)
+{
+
+
+  if((*uCurr < uLength) && (*vCurr < vLength)){
+    int comp;
+    int vmask;
+    int umask;
+    while(*workIndex < *workPerThread){
+    	vmask = (vMasked) ? vMask[*vCurr] : 0;
+        umask = (uMasked) ? uMask[*uCurr] : 0;
+		comp = uNodes[*uCurr] - vNodes[*vCurr];
+
+		*triangles += (comp == 0 && !umask && !vmask);
+
+		if (upd3rdV && comp == 0 && !umask && !vmask)
+			if (subtract) {
+				atomicSub(outPutTriangles + uNodes[*uCurr], multiplier);
+
+				// Ktruss
+				length_t pos_id;
+				vertexId_t common = uNodes[*uCurr];
+
+				// pos_id = findIndexOfVertex(custing,common,dest);
+				// if(pos_id!=-1)
+				// 	atomicSub(custing->dVD->adj[common]->ew+pos_id,1);
+				// else
+				// 	printf("7");
+
+				pos_id = findIndexOfVertex(custing,dest,common);
+				if(pos_id!=-1)
+					atomicSub(custing->dVD->adj[dest]->ew+pos_id,1);
+	
+			}
+			// else {
+			// 	atomicAdd(outPutTriangles + uNodes[*uCurr], multiplier);
+			// }
+		*uCurr += (comp <= 0 && !vmask) || umask;
+		*vCurr += (comp >= 0 && !umask) || vmask;
+		*workIndex += (comp == 0&& !umask && !vmask) + 1;
+
+		if((*vCurr == vLength) || (*uCurr == uLength)){
+			break;
+		}
+    }
+    *triangles -= ((comp == 0) && (*workIndex > *workPerThread) && (found));
+  }
+}
+
+
+
+// u_len < v_len
+template <bool uMasked, bool vMasked, bool subtract, bool upd3rdV>
+__device__ triangle_t count_trianglesAsymmetric(cuStinger* custing,vertexId_t u, vertexId_t const * const __restrict__ u_nodes, length_t u_len,
+    vertexId_t v, vertexId_t const * const __restrict__ v_nodes, length_t v_len, int threads_per_block,
+    volatile vertexId_t* __restrict__ firstFound, int tId, triangle_t * const __restrict__ outPutTriangles,
+    vertexId_t const * const __restrict__ uMask, vertexId_t const * const __restrict__ vMask, triangle_t multiplier, 
+	vertexId_t src, vertexId_t dest)
+{
+	// Partitioning the work to the multiple thread of a single GPU processor. The threads should get a near equal number of the elements to Tersect - this number will be off by 1.
+	int work_per_thread, diag_id;
+	workPerThread(u_len, v_len, threads_per_block, tId, &work_per_thread, &diag_id);
+	triangle_t triangles = 0;
+	int work_index = 0,found=0;
+	length_t u_min,u_max,v_min,v_max,u_curr,v_curr;
+
+	firstFound[tId]=0;
+
+	if(work_per_thread>0){
+		// For the binary search, we are figuring out the initial poT of search.
+		initialize(diag_id, u_len, v_len,&u_min, &u_max,&v_min, &v_max,&found);
+    	u_curr = 0; v_curr = 0;
+
+	    bSearch(found, diag_id, u_nodes, v_nodes, &u_len, &u_min, &u_max, &v_min,
+        &v_max, &u_curr, &v_curr);
+
+    	int sum = fixStartPoint(u_len, v_len, &u_curr, &v_curr, u_nodes, v_nodes);
+    	work_index += sum;
+	    if(tId > 0)
+	      firstFound[tId-1] = sum;
+	    triangles += sum;
+	    intersectCountAsymmetric<uMasked, vMasked, subtract, upd3rdV>(custing,
+	    	u_len, v_len, u_nodes, v_nodes, &u_curr, &v_curr,
+	        &work_index, &work_per_thread, &triangles, firstFound[tId], outPutTriangles, 
+	        uMask, vMask, multiplier,src,dest,u,v);
+	}
+	return triangles;
+}
+
+
+
+
 
 __global__ void deviceBUTwoCUOneTriangles (cuStinger* custing, BatchUpdateData *bud,
     triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
@@ -533,17 +529,24 @@ __global__ void deviceBUTwoCUOneTriangles (cuStinger* custing, BatchUpdateData *
 		vertexId_t src = bud->getSrc()[edge];
 		vertexId_t dest= bud->getDst()[edge];
 
-		// if (src < dest) continue;
-
-
 		// length_t srcLen= redBU[src];
 		// length_t destLen=redCU[dest];
 		length_t srcLen= d_off[src+1] - d_off[src];
 		length_t destLen=custing->dVD->getUsed()[dest];
 
-		bool avoidCalc = (src == dest) || (destLen < 2) || (srcLen < 2);
-		if(avoidCalc && !deletion)
+
+		bool avoidCalc = (src == dest) || (srcLen == 0);
+		if(avoidCalc)
 			continue;
+
+		// if(threadIdx.x==1 && blockIdx.x==0){
+		// 	printf("%d %d %d %d\n",src,dest,srcLen, destLen);
+		// }
+		// int srci=1;
+		// int desti=1070;
+		// if((src==srci && dest==desti) || (src==desti && dest==srci)){
+		// 	printf("%d %d %d %d\n",src,dest,srcLen, destLen);
+		// }
 
         vertexId_t const * const src_ptr = d_ind + d_off[src];
         vertexId_t const * const src_mask_ptr = bud->getIndDuplicate() + d_off[src];
@@ -564,13 +567,13 @@ __global__ void deviceBUTwoCUOneTriangles (cuStinger* custing, BatchUpdateData *
 
 		// triangle_t tCount=0;
 		triangle_t tCount = (sourceSmaller)?
-								count_triangles<true,false,true,true>(
+								count_trianglesAsymmetric<true,false,true,true>(
 								custing,small, small_ptr, small_len,
 								large,large_ptr, large_len,
 								threads_per_block,firstFoundPos,
 								tx%threads_per_block, outPutTriangles,
 								small_mask_ptr, large_mask_ptr, 1,src,dest):
-								count_triangles<false,true,true,true>(
+								count_trianglesAsymmetric<false,true,true,true>(
 								custing,small, small_ptr, small_len,
 								large,large_ptr, large_len,
 								threads_per_block,firstFoundPos,
@@ -581,12 +584,6 @@ __global__ void deviceBUTwoCUOneTriangles (cuStinger* custing, BatchUpdateData *
 		atomicSub(outPutTriangles + src, tCount*1);
 		atomicSub(outPutTriangles + dest, tCount*1);
 		__syncthreads();
-
-		// Ktruss
-		// length_t dst_id = findIndexOfVertex(custing,src,dest);
-		// length_t src_id = findIndexOfVertex(custing,dest,src);
-		// atomicSub(custing->dVD->adj[src]->ew+dst_id,1*tCount);
-		// atomicSub(custing->dVD->adj[dest]->ew+src_id,1*tCount);
 	}
 }
 
@@ -621,3 +618,98 @@ void callDeviceDifferenceTriangles(cuStinger& custing, BatchUpdate& bu,
 
 
 
+/*
+__global__ void deviceBUThreeTriangles (cuStinger* custing, BatchUpdateData *bud,
+    triangle_t * const __restrict__ outPutTriangles, const int threads_per_block,
+    const int number_blocks, const int shifter, bool deletion,
+    length_t const * const __restrict__ redBU)
+{
+	length_t batchsize = *(bud->getBatchSize());
+	// Partitioning the work to the multiple thread of a single GPU processor. The threads should get a near equal number of the elements to intersect - this number will be off by no more than one.
+	int tx = threadIdx.x;
+ 	length_t this_mp_start, this_mp_stop;
+
+	length_t *d_off = bud->getOffsets();
+	vertexId_t * d_ind = bud->getDst();
+	vertexId_t * d_seg = bud->getSrc();
+
+	const int blockSize = blockDim.x;
+	workPerBlock(batchsize, &this_mp_start, &this_mp_stop, blockSize);
+
+	__shared__ vertexId_t firstFound[1024];
+
+	length_t adj_offset=tx>>shifter;
+	length_t* firstFoundPos=firstFound + (adj_offset<<shifter);
+	for (length_t edge = this_mp_start+adj_offset; edge < this_mp_stop; edge+=number_blocks){
+		if (bud->getIndDuplicate()[edge]) // this means it's a duplicate edge
+			continue;
+			
+		vertexId_t src = d_seg[edge];
+		vertexId_t dest= d_ind[edge];
+		// if (src > dest) continue;
+
+		// length_t srcLen= redBU[src];
+		// length_t destLen=redBU[dest];
+		length_t srcLen= d_off[src+1] - d_off[src];
+		length_t destLen=d_off[dest+1] - d_off[dest];
+
+		bool avoidCalc = (src == dest) || (destLen < 2) || (srcLen < 2);
+		if(avoidCalc && !deletion)
+			continue;
+
+		bool sourceSmaller = (srcLen<destLen);
+        vertexId_t small = sourceSmaller? src : dest;
+        vertexId_t large = sourceSmaller? dest : src;
+        length_t small_len = sourceSmaller? srcLen : destLen;
+        length_t large_len = sourceSmaller? destLen : srcLen;
+
+        vertexId_t const * const small_ptr = d_ind + d_off[small];
+        vertexId_t const * const large_ptr = d_ind + d_off[large];
+        vertexId_t const * const small_mask_ptr = bud->getIndDuplicate() + d_off[small];
+        vertexId_t const * const large_mask_ptr = bud->getIndDuplicate() + d_off[large];
+
+		// triangle_t tCount=0;
+
+		triangle_t tCount = (deletion)?
+								count_triangles<true,true,true,false>(
+								custing,small, small_ptr, small_len,
+								large,large_ptr, large_len,
+								threads_per_block,firstFoundPos,
+								tx%threads_per_block, outPutTriangles,
+								small_mask_ptr, large_mask_ptr, 2,src,dest):
+								count_triangles<true,true,false,false>(
+								custing,small, small_ptr, small_len,
+								large,large_ptr, large_len,
+								threads_per_block,firstFoundPos,
+								tx%threads_per_block, outPutTriangles,
+								small_mask_ptr, large_mask_ptr, 2,src,dest);
+
+		if (deletion){
+			atomicSub(outPutTriangles + src, tCount*2);
+		} else{
+			atomicAdd(outPutTriangles + src, tCount*2);
+		} 
+		__syncthreads();
+	}
+}
+*/
+
+// __device__ length_t reduceUsed(vertexId_t* adj, vertexId_t u, length_t used)
+// {
+// 	length_t i=0;
+// 	while (adj[i] < u && i < used) i++;
+// 	return i;
+// }
+
+// __global__ void reduceUsedAll(BatchUpdateData *bud, cuStinger* custing, length_t* redCU, length_t* redBU)
+// {
+// 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+// 	length_t nv = custing->nv;
+// 	if (tid < nv)
+// 	{
+// 		redCU[tid] = reduceUsed(custing->dVD->getAdj()[tid]->dst, tid, custing->dVD->getUsed()[tid]);
+// 		// length_t *d_off = bud->getOffsets();
+// 		// vertexId_t * d_ind = bud->getDst();
+// 		// redBU[tid] = reduceUsed(d_ind + d_off[tid], tid, d_off[tid+1] - d_off[tid]);
+// 	}
+// }
