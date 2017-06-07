@@ -235,7 +235,7 @@ void kTruss::RunDynamic(cuStinger& custing){
 		}
 		hostKTrussData.maxK++; SyncDeviceWithHost();
 	}
-	cout << "Found the maximal KTruss at : " << hostKTrussData.maxK << endl;
+	// cout << "Found the maximal KTruss at : " << hostKTrussData.maxK << endl;
 }
 
 bool kTruss::findTrussOfKDynamic(cuStinger& custing,bool& stop){

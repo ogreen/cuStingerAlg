@@ -176,6 +176,10 @@ __device__ void intersectCount(cuStinger* custing,const length_t uLength, const 
 						atomicSub(custing->dVD->adj[u]->ew+*uCurr,1);
 						atomicSub(custing->dVD->adj[v]->ew+*vCurr,1);
 
+						// custing->dVD->adj[u]->ew[*uCurr]-=1;					
+						// custing->dVD->adj[v]->ew[*vCurr]-=1;					
+
+
 					// pos_id = findIndexOfVertex(custing,u,common);
 					// if(pos_id!=-1)
 					// 	atomicSub(custing->dVD->adj[u]->ew+pos_id,1);
@@ -437,10 +441,14 @@ __device__ void intersectCountAsymmetric(cuStinger* custing,const length_t uLeng
 				// else
 				// 	printf("7");
 
-				pos_id = findIndexOfVertex(custing,dest,common);
-				if(pos_id!=-1)
-					atomicSub(custing->dVD->adj[dest]->ew+pos_id,1);
-	
+				if(dest==u)
+					atomicSub(custing->dVD->adj[dest]->ew+*uCurr,1);
+				else
+					atomicSub(custing->dVD->adj[dest]->ew+*vCurr,1);
+
+				// pos_id = findIndexOfVertex(custing,dest,common);
+				// if(pos_id!=-1)
+				// 	atomicSub(custing->dVD->adj[dest]->ew+pos_id,1);	
 			}
 			// else {
 			// 	atomicAdd(outPutTriangles + uNodes[*uCurr], multiplier);

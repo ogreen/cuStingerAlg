@@ -46,7 +46,7 @@ int arrayThreadShift[]={0};
 // int arrayThreadPerIntersection[]={8};
 // int arrayThreadShift[]={3};
 
-int runKtruss(vertexId_t nv,length_t ne, int maxK, length_t*  off,vertexId_t*  ind)
+int runKtruss(vertexId_t nv,length_t ne, int alg, length_t*  off,vertexId_t*  ind,string graphName)
 {
 	int device = 0;
 	int run    = 2;
@@ -91,64 +91,62 @@ int runKtruss(vertexId_t nv,length_t ne, int maxK, length_t*  off,vertexId_t*  i
 					int shifter=arrayThreadShift[t];
 					int nbl=sps/tsp;
 
-				cuStinger custing(defaultInitAllocater,defaultUpdateAllocater);
+					cuStinger custing(defaultInitAllocater,defaultUpdateAllocater);
 
-				cuStingerInitConfig cuInit;
-				cuInit.initState =eInitStateCSR;
-				cuInit.maxNV = nv+1;
-				cuInit.useVWeight = false;cuInit.isSemantic = false; cuInit.useEWeight = true;
-				cuInit.csrNV 			= nv;	cuInit.csrNE	   		= ne;
-				cuInit.csrOff 			= off;	cuInit.csrAdj 			= ind;
-				cuInit.csrVW 			= NULL;	cuInit.csrEW			= NULL;
-
-				custing.initializeCuStinger(cuInit);
+					cuStingerInitConfig cuInit;
+					cuInit.initState =eInitStateCSR;
+					cuInit.maxNV = nv+1;
+					cuInit.useVWeight = false;cuInit.isSemantic = false; cuInit.useEWeight = true;
+					cuInit.csrNV 			= nv;	cuInit.csrNE	   		= ne;
+					cuInit.csrOff 			= off;	cuInit.csrAdj 			= ind;
+					cuInit.csrVW 			= NULL;	cuInit.csrEW			= NULL;
 
 					cudaEvent_t ce_start,ce_stop;
 					float totalTime;
 
-					kTruss kt;
-					kt.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
-					kt.Init(custing);
-					kt.copyOffsetArrayDevice(d_off);
-					kt.Reset();
-					start_clock(ce_start, ce_stop);
-					
-					if(maxK!=0){
-						if(maxK==-1)
-							kt.Run(custing);
-						else
-							kt.RunForK(custing,maxK);
+					if(alg&1==1){
+						custing.initializeCuStinger(cuInit);
+						kTruss kt;
+						kt.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
+						kt.Init(custing);
+						kt.copyOffsetArrayDevice(d_off);
+						kt.Reset();
+						start_clock(ce_start, ce_stop);
+						
+						kt.Run(custing);
+						totalTime = end_clock(ce_start, ce_stop);
+						cout << "graph="<< graphName<< endl; 
+						cout << "k=" << kt.getMaxK() << ":" << totalTime << endl; 
+						kt.Release();
+						custing.freecuStinger();
+
 					}
-					totalTime = end_clock(ce_start, ce_stop);
-					cout << "Total time for k-Truss = " << kt.getMaxK() << " : " << totalTime << endl; 
-					kt.Release();
+					if(alg&2==2){
+						cuStinger custing2(defaultInitAllocater,defaultUpdateAllocater);
+						custing2.initializeCuStinger(cuInit);
 
-				cuStinger custing2(defaultInitAllocater,defaultUpdateAllocater);
-				custing2.initializeCuStinger(cuInit);
+						kTruss kt2;
+						kt2.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
+						kt2.Init(custing2);
+						kt2.copyOffsetArrayDevice(d_off);
+						kt2.Reset();
+						start_clock(ce_start, ce_stop);
+						
+						kt2.RunDynamic(custing2);
 
-					kTruss kt2;
-					kt2.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
-					kt2.Init(custing2);
-					kt2.copyOffsetArrayDevice(d_off);
-					kt2.Reset();
-					start_clock(ce_start, ce_stop);
-					
-					kt2.RunDynamic(custing2);
+						totalTime = end_clock(ce_start, ce_stop);
+						cout << "graph="<< graphName<< endl; 
+						cout << "k=" << kt2.getMaxK() << ":" << totalTime << endl; 
+						kt2.Release();
 
-					totalTime = end_clock(ce_start, ce_stop);
-					cout << "Total time for k-Truss = " << kt2.getMaxK() << " : " << totalTime << endl; 
-					kt2.Release();
+						if(totalTime<minTimecuStinger) minTimecuStinger=totalTime; 
 
-					if(totalTime<minTimecuStinger) minTimecuStinger=totalTime; 
-
-					custing.freecuStinger();
-					custing2.freecuStinger();
+						custing2.freecuStinger();
+					}
 
 			    }
 			}	
 		}
-		cout << nv << ", " << ne << ", "<< minTime << ", " << minTimecuStinger<< endl;
-
 		free(h_triangles);
 
 		CUDA(cudaFree(d_off));
@@ -177,6 +175,19 @@ int main(const int argc, char *argv[]){
 	isRmat 	 = filename.find("kron")==std::string::npos?false:true;
 	isMarket = filename.find(".mtx")==std::string::npos?false:true;
 
+	string graphName=filename;
+	int period = filename.find(".");
+
+	int i, lasti=0;
+	for(i = graphName.find("/", 0); i != std::string::npos; i = graphName.find("/", i)){
+		i++;
+		lasti=i;
+	}
+	graphName = graphName.substr(lasti,period-lasti);
+
+	// cout << lasti << " " << period << endl;
+	// cout << graphName << endl;
+
 	if(isDimacs){
 	    readGraphDIMACS(argv[1],&off,&adj,&nv,&ne,isRmat);
 	}
@@ -189,15 +200,15 @@ int main(const int argc, char *argv[]){
 	else{ 
 		cout << "Unknown graph type" << endl;
 	}
-	int maxK=-1;
+	int alg=3;
 	if (argc==3)
-		maxK = atoi(argv[2]);
+		alg = atoi(argv[2]);
 
 	cout << "Vertices: " << nv << "    Edges: " << ne  << "      " << off[nv] << endl;
 
 	cudaEvent_t ce_start,ce_stop;
 
-	runKtruss(nv,ne,maxK,off,adj);
+	runKtruss(nv,ne,alg,off,adj,graphName);
 
 
 	cout << "Vertices: " << nv << "    Edges: " << ne  << endl;
