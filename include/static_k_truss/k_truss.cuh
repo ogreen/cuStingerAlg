@@ -27,6 +27,8 @@ public:
 	int  counter;
 	int  activeVertices;
 
+	vertexQueue activeQueue; // Stores all the active vertices
+
 	int fullTriangleIterations;
 
 	// int numDeletedEdges;
@@ -130,6 +132,32 @@ static __device__ void findUnderKDynamic(cuStinger* custing,vertexId_t src, void
 		}
 	}
 }
+/*
+static __device__ void findUnderKDynamicWeights(cuStinger* custing,vertexId_t src,vertexId_t dst, eweight_t ew, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
+	if(kt->isActive[src]==0)
+		return;
+	if (ew < (kt->maxK-2)){
+		int spot = atomicAdd(&(kt->counter), 1);
+		kt->src[spot]=src;
+		kt->dst[spot]=dst;
+	}
+
+}
+*/
+
+static __device__ void queueActive(cuStinger* custing,vertexId_t src, void* metadata){
+	kTrussData* kt = (kTrussData*)metadata;
+
+	length_t srcLen=custing->dVD->used[src];
+	if(srcLen==0 && !kt->isActive[src]){
+		kt->isActive[src]=0;
+	}
+	else{
+		kt->activeQueue.enqueue(src);
+	}
+}
+
 
 static __device__ void countActive(cuStinger* custing,vertexId_t src, void* metadata){
 	kTrussData* kt = (kTrussData*)metadata;

@@ -35,8 +35,8 @@ using namespace cuStingerAlgs;
 // int arrayThreadPerIntersection[]={32};
 // int arrayThreadShift[]={5};
 
-int arrayBlocks[]={64000};
-int arrayBlockSize[]={64};
+int arrayBlocks[]={16000};
+int arrayBlockSize[]={32};
 int arrayThreadPerIntersection[]={1};
 int arrayThreadShift[]={0};
 
@@ -46,7 +46,7 @@ int arrayThreadShift[]={0};
 // int arrayThreadPerIntersection[]={8};
 // int arrayThreadShift[]={3};
 
-int runKtruss(vertexId_t nv,length_t ne, int alg, length_t*  off,vertexId_t*  ind,string graphName)
+int runKtruss(vertexId_t nv,length_t ne, int alg, int maxk, length_t*  off,vertexId_t*  ind,string graphName)
 {
 	int device = 0;
 	int run    = 2;
@@ -104,7 +104,7 @@ int runKtruss(vertexId_t nv,length_t ne, int alg, length_t*  off,vertexId_t*  in
 					cudaEvent_t ce_start,ce_stop;
 					float totalTime;
 
-					if(alg&1==1){
+					if(alg&1){
 						custing.initializeCuStinger(cuInit);
 						kTruss kt;
 						kt.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
@@ -121,7 +121,7 @@ int runKtruss(vertexId_t nv,length_t ne, int alg, length_t*  off,vertexId_t*  in
 						custing.freecuStinger();
 
 					}
-					if(alg&2==2){
+					if(alg&2){
 						cuStinger custing2(defaultInitAllocater,defaultUpdateAllocater);
 						custing2.initializeCuStinger(cuInit);
 
@@ -143,6 +143,24 @@ int runKtruss(vertexId_t nv,length_t ne, int alg, length_t*  off,vertexId_t*  in
 
 						custing2.freecuStinger();
 					}
+					if(alg&4){
+						custing.initializeCuStinger(cuInit);
+						kTruss kt;
+						kt.setInitParameters(nv,ne, tsp,nbl,shifter,blocks, sps);
+						kt.Init(custing);
+						kt.copyOffsetArrayDevice(d_off);
+						kt.Reset();
+						start_clock(ce_start, ce_stop);
+						
+						kt.RunForK(custing,maxk);
+						totalTime = end_clock(ce_start, ce_stop);
+						cout << "graph="<< graphName<< endl; 
+						cout << "k=" << kt.getMaxK() << ":" << totalTime << endl; 
+						kt.Release();
+						custing.freecuStinger();
+
+					}
+
 
 			    }
 			}	
@@ -200,18 +218,18 @@ int main(const int argc, char *argv[]){
 	else{ 
 		cout << "Unknown graph type" << endl;
 	}
-	int alg=3;
-	if (argc==3)
+	int alg=3,maxk=3;
+	if (argc>=3)
 		alg = atoi(argv[2]);
+	if (argc>=4)
+		maxk = atoi(argv[3]);
 
 	cout << "Vertices: " << nv << "    Edges: " << ne  << "      " << off[nv] << endl;
 
 	cudaEvent_t ce_start,ce_stop;
 
-	runKtruss(nv,ne,alg,off,adj,graphName);
+	runKtruss(nv,ne,alg,maxk,off,adj,graphName);
 
-
-	cout << "Vertices: " << nv << "    Edges: " << ne  << endl;
 
 
 	free(off);
